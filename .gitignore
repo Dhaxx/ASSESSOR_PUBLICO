@@ -1,0 +1,41 @@
+# Arquivos de conexao
+conexao/
+
+# Diretórios de build
+/bin
+/pkg
+
+# Executáveis
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Arquivos de saída do compilador
+*.out
+
+# Diretórios de dependências
+vendor/
+
+# Configurações específicas de IDE/editor
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Diretórios de cobertura de testes
+cover/
+coverage.out
+
+# Arquivos temporários
+*.tmp
+*.temp
+
+# Arquivos de configuração específicos do sistema operacional
+.DS_Store
+
+# Arquivos de configuração do Go
+go.sum
