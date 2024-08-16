@@ -1,42 +1,45 @@
 package compras
 
 import (
-	"ASSESSOR_PUBLICO/conexao"
-	"strconv"
+	"ASSESSOR_PUBLICO/CONEXAO"
+	"database/sql"
 	"fmt"
+	"strconv"
 )
 
-func EstourouSubgr(codigo int, subgrupo string, grupo string) []string {
-	// Cria Conexão com os bancos
-	cnx_aux, err := conexao.ConexaoDestino()
-	if err != nil {
-		panic("Falha ao conectar com o banco de destino: " + err.Error())
-	}
-	defer cnx_aux.Close()
-
+func EstourouSubgr(codigo int, subgrupo string, grupo string, con *sql.DB) []string {
 	var subgrupoNovo string
 	var codigoStr string
 
-	if codigo > 999 && codigo < 10000 {
+	if codigo < 1000 {
+		codigoStr = zfill(strconv.Itoa(codigo),3)
+		return []string{subgrupo, codigoStr}		
+	} else if codigo < 10000 {
 		codigoStr = strconv.Itoa(codigo)
 		subgrupoNovo = codigoStr[:1]
-		subgrupoNovo = `0`+subgrupoNovo+string(subgrupo[2])
+		subgrupoNovo = `9`+subgrupoNovo+string(subgrupo[2])
 		codigoStr = codigoStr[1:]
-	} else if codigo > 9999 {
+	} else if codigo >= 10000 {
 		codigoStr = strconv.Itoa(codigo)
 		subgrupoNovo = codigoStr[:2]
 		subgrupoNovo = subgrupoNovo+string(subgrupo[2])
 		codigoStr = codigoStr[2:]
-	} else {
-		codigoStr = zfill(strconv.Itoa(codigo),3)
-		return []string{subgrupo, codigoStr}		
 	}
 
-	_, err = cnx_aux.Exec(`INSERT INTO CADSUBGR (GRUPO, SUBGRUPO, NOME, OCULTAR) select grupo, ?, nome, 'N' from cadsubgr where grupo = ? and subgrupo = ?`, subgrupoNovo, grupo, subgrupo)
+	tx, err := con.Begin()
 	if err != nil {
-		panic("Falha ao inserir dados: " + err.Error())
+		_ = err.Error()
 	}
-	cnx_aux.Close()
+
+	_, err = tx.Exec(`INSERT INTO CADSUBGR (GRUPO, SUBGRUPO, NOME, OCULTAR) select grupo, ?, nome, 'N' from cadsubgr where grupo = ? and subgrupo = ?`, subgrupoNovo, grupo, subgrupo)
+	if err != nil {
+		_ = err.Error()
+	}
+
+	// Comita a transação
+	if err := tx.Commit(); err != nil {
+		panic("Falha ao comitar transação em EstourouSubgr: " + err.Error())
+	}
 
 	return []string{subgrupoNovo, codigoStr}
 }

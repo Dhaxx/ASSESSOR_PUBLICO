@@ -3,11 +3,13 @@ module ASSESSOR_PUBLICO
 go 1.22.4
 
 require (
+	github.com/gobuffalo/nulls v0.4.2
 	github.com/lib/pq v1.10.9
 	github.com/nakagami/firebirdsql v0.9.11
 )
 
 require (
+	github.com/gofrs/uuid v4.2.0+incompatible // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect

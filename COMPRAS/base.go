@@ -1,7 +1,7 @@
 package compras
 
 import (
-	"ASSESSOR_PUBLICO/conexao"
+	"ASSESSOR_PUBLICO/CONEXAO"
 	"time"
 	"fmt"
 )
@@ -33,8 +33,8 @@ func Cadunimedida() {
 
 	// Executa Select
 	rows, err := cnx_pg.Query(`select
-									substring(unidademedidadescricao,1,30) descricao,
-									unidademedidasigla,
+									trim(substring(unidademedidadescricao,1,30)) descricao,
+									trim(substring(unidademedidasigla,1,5)) sigla,
 									unidademedidaid
 								from
 									unidademedida u`)
@@ -99,10 +99,10 @@ func GrupoSubgrupo() {
 									'0'||substring(hierarquiaconcatniveis, 1, 2) grupo,
 									'0'||substring(hierarquiaconcatniveis, 4, 2) subgrupo,
 									hierarquianivel,
-									hierarquiadesc,
+									substring(hierarquiadesc, 1, 45) nome,
 									case when hierarquiasituacao = 'A' then 'N' else 'S' end ocultar,
 									hierarquiagrupoid,
-									hierarquiasubgrupoid
+									coalesce(hierarquiasubgrupoid,0) subgrupoid
 								from
 									hierarquia h 
 								order by hierarquianivel`)
@@ -152,8 +152,13 @@ func Cadest() {
 	// Limpa tabela
 	cnx_fdb.Exec("DELETE FROM CADEST")
 
+	tx, err := cnx_fdb.Begin()
+	if err != nil {
+		panic("Falha ao iniciar transação: " + err.Error())
+	}
+
 	// Prepara Insert
-	insert, err := cnx_fdb.Prepare(`INSERT
+	insert, err := tx.Prepare(`INSERT
 								INTO
 								Cadest(cadpro,
 								grupo,
@@ -177,7 +182,7 @@ func Cadest() {
 									row_number() over (partition by hierarquiaconcatniveis order by hierarquiaconcatniveis) codigo,
 									a.materialdescricao disc1,
 									case when materialtipo = 2 then 'S' when materialtipo = 1 then 'C' else 'P' end tipopro,
-									c.unidademedidasigla unid1,
+									substring(c.unidademedidasigla,1,5) unid1,
 									case when a.materialcaract is null or a.materialcaract = '' then a.materialconciddesc else materialcaract end as descr1,
 									a.materialid codreduz,
 									case when materialsituacao = 'A' then 'N' else 'S' end as ocultar
@@ -194,13 +199,14 @@ func Cadest() {
 	// Itera sobre o resultado
 	var grupo, subgrupo, disc1, tipopro, unid1, discr1, codreduz, ocultar string
 	var intCodigo int
+	
 	for rows.Next() {
 		err = rows.Scan(&grupo, &subgrupo, &intCodigo, &disc1, &tipopro, &unid1, &discr1, &codreduz, &ocultar)
 		if err != nil {
 			panic("Falha ao ler resultado: " + err.Error())
 		}
 
-		subgrupoCodigo := EstourouSubgr(intCodigo, subgrupo, grupo)
+		subgrupoCodigo := EstourouSubgr(intCodigo, subgrupo, grupo, cnx_fdb)
 
 		cadpro := grupo +"."+subgrupoCodigo[0]+"."+ subgrupoCodigo[1]
 		subgrupo = subgrupoCodigo[0]
@@ -210,6 +216,10 @@ func Cadest() {
 		if err != nil {
 			panic("Falha ao inserir dados: " + err.Error())
 		}
+	}
+	// Comita a transação em Cadest
+	if err := tx.Commit(); err != nil {
+		panic("Falha ao commitar transação: " + err.Error())
 	}
 	fmt.Println("Cadest - Tempo de execução: ", time.Since(start))
 }
@@ -282,6 +292,10 @@ func CentroCusto() {
 	}
 	defer cnx_pg.Close()
 
+	// Cria Campo de identificação
+	cnx_fdb.Exec("ALTER TABLE CENTROCUSTO ADD ID_ANT INTEGER")  // Cria Campo de identificação
+	cnx_fdb.Exec("ALTER TABLE CENTROCUSTO ADD COD_ANT VARCHAR(30)")  // Cria Campo de identificação
+
 	// Limpa tabela
 	cnx_fdb.Exec("DELETE FROM CENTROCUSTO")
 
@@ -298,8 +312,10 @@ func CentroCusto() {
                                 codccusto,
                                 empresa,
                                 unidade,
-                                ocultar)
-                            values (?,?,?,?,?,?,?,?,?,?,?)`)
+                                ocultar,
+								id_ant,
+								cod_ant)
+                            values (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic("Falha ao preparar insert: " + err.Error())
 	}
@@ -308,31 +324,33 @@ func CentroCusto() {
 	rows, err := cnx_pg.Query(`select
 									substring(undorccodigo, 1, 2) poder,
 									substring(undorccodigo, 4, 2) orgao,
-									null destino,
+									0 destino,
 									'001' ccusto,
 									undorcdescricao descr,
 									undorccodigodesc obs,
-									null placa,
-									row_number() over (partition by substring(undorccodigo, 1, 2) order by substring(undorccodigo, 1, 8)) codccusto,
+									0 placa,
+									undorcid codccusto,
 									substring(undorccodigo, 7, 2) unidade,
-									case when undorcsituacao = 'A' then 'N' else 'S' end as ocultar
+									case when undorcsituacao = 'A' then 'N' else 'S' end as ocultar,
+									undorcid id_ant,
+									undorccodigo cod_ant
 								from
 									unidadeorcamentaria u
-								where undorcorgaoid = ?`, GetEmpresa())
+								where undorcorgaoid = 3`, ) //$1 GetEmpresa()
 	if err != nil {
 		panic("Falha ao executar select: " + err.Error())
 	}
 
 	// Itera sobre o resultado
-	var poder, orgao, destino, ccusto, descr, obs, placa, unidade, ocultar string
-	var codccusto int
+	var poder, orgao, destino, ccusto, descr, obs, placa, unidade, ocultar, cod_ant string
+	var codccusto, id_ant int
 	for rows.Next() {
-		err = rows.Scan(&poder, &orgao, &destino, &ccusto, &descr, &obs, &placa, &codccusto, &unidade, &ocultar)
+		err = rows.Scan(&poder, &orgao, &destino, &ccusto, &descr, &obs, &placa, &codccusto, &unidade, &ocultar, &id_ant, &cod_ant)
 		if err != nil {
 			panic("Falha ao ler resultado: " + err.Error())
 		}
 
-		_, err = insert.Exec(poder, orgao, destino, ccusto, descr, obs, placa, codccusto, GetEmpresa(), unidade, ocultar)
+		_, err = insert.Exec(poder, orgao, destino, ccusto, descr, obs, placa, codccusto, 1, unidade, ocultar, id_ant, cod_ant)
 		if err != nil {
 			panic("Falha ao inserir dados: " + err.Error())
 		}
