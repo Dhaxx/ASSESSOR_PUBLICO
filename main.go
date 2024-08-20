@@ -1,7 +1,7 @@
 package main
 
 import (
-	"ASSESSOR_PUBLICO/COMPRAS"
+	compras "ASSESSOR_PUBLICO/COMPRAS"
 )
 
 func main() {
@@ -11,6 +11,6 @@ func main() {
 	// compras.Destino()
 	// compras.CentroCusto()
 
-	// compras.Solicitacao()
+	// compras.Cadorc()
 	compras.Icadorc()
 }
