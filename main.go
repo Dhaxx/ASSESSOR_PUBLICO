@@ -14,5 +14,7 @@ func main() {
 	// compras.Cadorc()
 	// compras.Icadorc()
 	// compras.Fcadorc()
-	compras.Vcadorc()
+	// compras.Vcadorc()
+
+	compras.Cadlic()
 }
