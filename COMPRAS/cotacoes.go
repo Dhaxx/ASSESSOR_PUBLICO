@@ -185,7 +185,7 @@ func Icadorc() {
 
 	rows, err := cnx_pg.Query(`select distinct 
 									--loteordem,
-									b.itemcompraordem,
+									coalesce(d.estimativaitemid,b.itemcompraordem) item,
 									b.itemcompramaterialid AS codreduz,
 									SUM(b.itemcompraquantidade) AS total_quantidade, -- Soma as quantidades
 									0 AS valor,
@@ -202,7 +202,7 @@ func Icadorc() {
 									AND a.pedidocompraversao = b.itemcompraversao
 								LEFT JOIN estimativa c ON c.estimativacotacaoid = a.pedidocompracotacaoid
 									AND c.estimativacotacaoversao = a.pedidocompracotacaoversao 
-								LEFT JOIN estimativaitem d ON d.estimativaid = c.estimativaid
+								LEFT JOIN estimativaitem d ON d.estimativaid = c.estimativaid and d.estimativaitemmaterialid = b.itemcompramaterialid
 								LEFT JOIN lote e ON e.loteid = d.estimativaitemloteid
 									AND e.loteversao = d.estimativaitemloteversao 
 								LEFT JOIN cotacaoprecos f ON f.cotacaoprecosid = a.pedidocompracotacaoid
@@ -210,6 +210,7 @@ func Icadorc() {
 								WHERE
 									a.pedidocompraugid = 2 
 									AND itemcompraorigem = 1 
+									and itemcompramaterialid is not null
 									--AND COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) = 2
 								GROUP by
 									loteordem,
@@ -223,7 +224,7 @@ func Icadorc() {
 									END,
 									COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
 									pedidocompracotacaoid
-								order by id_ant, itemcompraordem`)
+								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)`)
 	if err != nil {
 		panic("Falha ao buscar itens de pedido de compra: " + err.Error())
 	}
@@ -280,74 +281,245 @@ func Fcadorc() {
 		panic("Falha ao conectar com o banco de origem: " + err.Error())
 	}
 
-	// Limpa tabelas
-	cnx_fdb.Exec("delete from fcadorc")
-
 	// Prepara o insert
 	insert, err := cnx_fdb.Prepare(`insert into fcadorc(numorc,codif, nome, valorc, id_cadorc) values (?,?,?,?,?)`)
 	if err != nil {
 		panic("Falha ao preparar insert: " + err.Error())
 	}
 
-	rows, err := cnx_pg.Query(`select
-								d.pedidocompracotacaoid,
-								b.pessoaid,
-								sum(coalesce(c.itemcompraquantidade, 0)) qtd,
-								a.itemcompracotacaovalorunitario,
-								sum(round((coalesce(a.itemcompracotacaovalorunitario, 0) * coalesce(c.itemcompraquantidade, 0)))) valorctot,
-								c.itemcompraordem,
-								to_char(e.cotacaoprecosnumero,
-								'fm00000')|| '/' || e.cotacaoprecosano%2000 numorc,
-								null classe,
-								null ganhou,
-								a.itemcompracotacaovencedora,
-								a.itemcompracotacaoempatada
-							from
-								itemcompracotacao a
-							join pessoa b on
-								a.itemcompracotacaofornecedorid = b.pessoaid
-							join itemcompra c on
-								c.itemcompraid = a.itemcompraid
-								and a.itemcompraversao = c.itemcompraversao
-							join pedidocompra d on
-								d.pedidocompraid = c.itemcomprapedidoid
-								and d.pedidocompraversao = c.itemcomprapedidoversao
-							join cotacaoprecos e on
-								e.cotacaoprecosid = d.pedidocompracotacaoid
-								and e.cotacaoprecosversao = d.pedidocompracotacaoversao
-							where
-								d.pedidocompraugid = 2
-							group by
-								1,
-								2,
-								itemcompracotacaovalorunitario,
-								itemcompraordem,
-								cotacaoprecosnumero,
-								cotacaoprecosano,
-								a.itemcompracotacaovencedora,
-								a.itemcompracotacaoempatada
-							order by
-								numorc,
-								itemcompraordem,
-								itemcompracotacaovencedora`)
+	rows, err := cnx_pg.Query(`SELECT
+									numorc,
+									pessoaid codif,
+									substring(pessoanome,1,70) nome,
+									SUM(valorctot) AS valorc
+								FROM
+									(
+									SELECT
+										d.pedidocompracotacaoid,
+										b.pessoaid,
+										b.pessoanome,
+										SUM(COALESCE(c.itemcompraquantidade, 0)) AS qtd,
+										a.itemcompracotacaovalorunitario,
+										SUM(ROUND(COALESCE(a.itemcompracotacaovalorunitario, 0) * COALESCE(c.itemcompraquantidade, 0))) AS valorctot,
+										c.itemcompraordem,
+										TO_CHAR(e.cotacaoprecosnumero, 'fm00000') || '/' || e.cotacaoprecosano % 2000 AS numorc,
+										NULL AS classe,
+										NULL AS ganhou,
+										a.itemcompracotacaovencedora,
+										a.itemcompracotacaoempatada
+									FROM
+										itemcompracotacao a
+									JOIN
+										pessoa b ON a.itemcompracotacaofornecedorid = b.pessoaid
+									JOIN
+										itemcompra c ON c.itemcompraid = a.itemcompraid AND a.itemcompraversao = c.itemcompraversao
+									JOIN
+										pedidocompra d ON d.pedidocompraid = c.itemcomprapedidoid AND d.pedidocompraversao = c.itemcomprapedidoversao
+									JOIN
+										cotacaoprecos e ON e.cotacaoprecosid = d.pedidocompracotacaoid AND e.cotacaoprecosversao = d.pedidocompracotacaoversao
+									WHERE
+										d.pedidocompraugid = $1
+									GROUP BY
+										d.pedidocompracotacaoid,
+										b.pessoaid,
+										b.pessoanome,
+										a.itemcompracotacaovalorunitario,
+										c.itemcompraordem,
+										e.cotacaoprecosnumero,
+										e.cotacaoprecosano,
+										a.itemcompracotacaovencedora,
+										a.itemcompracotacaoempatada
+									ORDER BY
+										numorc,
+										c.itemcompraordem,
+										a.itemcompracotacaovencedora
+									) AS rn
+								GROUP BY
+									numorc,
+									pessoaid,
+									pessoanome;`,GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar fornecedores: " + err.Error())
+	}
+
+	// Limpa tabelas
+	cnx_fdb.Exec("delete from fcadorc")	
+
+	aux1, err := cnx_fdb.Query("select numorc, id_cadorc from cadorc")
+	if err != nil {
+		panic("Falha ao buscar numorc: " + err.Error())
+	}
+	idsCadorc := make(map[string]int)
+
+	for aux1.Next() {
+		var numorc string
+		var id_cadorc int
+		err = aux1.Scan(&numorc, &id_cadorc)
+		if err != nil {
+			panic("Falha ao ler numorc: " + err.Error())
+		}
+		idsCadorc[numorc] = id_cadorc
 	}
 
 	var numorc, nome nulls.String
 	var codif, id_cadorc int
 	var valorc float64
-
 	for rows.Next() {
-		err = rows.Scan(&id_cadorc, &codif, &nome, &valorc, &numorc)
+		err = rows.Scan(&numorc, &codif, &nome, &valorc)
 		if err != nil {
 			panic("Falha ao ler fornecedores: " + err.Error())
 		}
+
+		id_cadorc = idsCadorc[numorc.String]
 
 		_, err = insert.Exec(numorc, codif, nome, valorc, id_cadorc)
 		if err != nil {
 			panic("Falha ao inserir fornecedores: " + err.Error())
 		}
 	}
+	fmt.Println("fcadorc - Tempo de execução: ", time.Since(start))
+}
+
+func Vcadorc() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Falha ao conectar com o banco de destino: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_pg, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Falha ao conectar com o banco de origem: " + err.Error())
+	}
+
+	// Limpa tabelas
+	cnx_fdb.Exec("delete from vcadorc")
+
+	// Cria Campo
+	cnx_fdb.Exec("alter table vcadorc add vencedor_ant varchar(1)")
+
+	tx, err := cnx_fdb.Begin()
+	if err != nil {
+		panic("Falha ao iniciar transação: " + err.Error())
+	}
+
+	// Prepara o insert
+	insert, err := tx.Prepare(`insert into vcadorc(numorc, item, codif, vlruni, vlrtot, id_cadorc, vencedor_ant) values (?,?,?,?,?,?,?)`)
+	if err != nil {
+		panic("Falha ao preparar insert: " + err.Error())
+	}	
+
+	rows, err := cnx_pg.Query(`SELECT
+									numorc,
+									item,
+									pessoaid AS codif, 
+									coalesce(itemcompracotacaovalorunitario,0) AS vlruni,
+									valorctot AS vlrtot,
+									itemcompracotacaovencedora
+								FROM (
+									SELECT
+										d.pedidocompracotacaoid,
+										b.pessoaid,
+										b.pessoanome,
+										SUM(COALESCE(c.itemcompraquantidade, 0)) AS qtd,
+										a.itemcompracotacaovalorunitario,
+										SUM(ROUND(COALESCE(a.itemcompracotacaovalorunitario, 0) * COALESCE(c.itemcompraquantidade, 0))) AS valorctot,
+										coalesce(g.estimativaitemid,c.itemcompraordem) item,
+										TO_CHAR(e.cotacaoprecosnumero, 'fm00000') || '/' || e.cotacaoprecosano % 2000 AS numorc,
+										NULL AS classe,
+										NULL AS ganhou,
+										a.itemcompracotacaovencedora,
+										a.itemcompracotacaoempatada
+									FROM
+										itemcompracotacao a
+									JOIN 
+										pessoa b ON a.itemcompracotacaofornecedorid = b.pessoaid
+									JOIN 
+										itemcompra c ON c.itemcompraid = a.itemcompraid
+											AND a.itemcompraversao = c.itemcompraversao
+									JOIN 
+										pedidocompra d ON d.pedidocompraid = c.itemcomprapedidoid
+											AND d.pedidocompraversao = c.itemcomprapedidoversao
+									JOIN 
+										cotacaoprecos e ON e.cotacaoprecosid = d.pedidocompracotacaoid
+											AND e.cotacaoprecosversao = d.pedidocompracotacaoversao
+									left join estimativa f on f.estimativacotacaoid = e.cotacaoprecosid and f.estimativacotacaoversao = e.cotacaoprecosversao
+									left join estimativaitem g ON f.estimativaid = g.estimativaid and g.estimativaitemmaterialid = c.itemcompramaterialid
+									WHERE
+										d.pedidocompraugid = 2
+									GROUP BY
+										d.pedidocompracotacaoid,
+										b.pessoaid,
+										b.pessoanome,
+										a.itemcompracotacaovalorunitario,
+										e.cotacaoprecosnumero,
+										e.cotacaoprecosano,
+										a.itemcompracotacaovencedora,
+										a.itemcompracotacaoempatada,
+										estimativaitemid,
+										c.itemcompraordem
+									ORDER BY
+										numorc,
+										item,
+										a.itemcompracotacaovencedora
+								) AS rn;
+								`)
+	if err != nil {
+		panic("Falha ao buscar fornecedores: " + err.Error())
+	}
+
+	aux1, err := cnx_fdb.Query("select numorc, id_cadorc from cadorc")
+	if err != nil {
+		panic("Falha ao buscar numorc: " + err.Error())
+	}
+	idsCadorc := make(map[string]int)
+
+	for aux1.Next() {
+		var numorc string
+		var id_cadorc int
+		err = aux1.Scan(&numorc, &id_cadorc)
+		if err != nil {
+			panic("Falha ao ler numorc: " + err.Error())
+		}
+		idsCadorc[numorc] = id_cadorc
+	}
+
+	var numorc, vencedor_ant string
+	var codif, id_cadorc, item int
+	var vlruni, vlrtot float64
+
+	for rows.Next() {
+		err = rows.Scan(&numorc, &item, &codif, &vlruni, &vlrtot, &vencedor_ant)
+		if err != nil {
+			panic("Falha ao ler fornecedores: " + err.Error())
+		}
+
+		id_cadorc = idsCadorc[numorc]
+
+		_, err = insert.Exec(numorc, item, codif, vlruni, vlrtot, id_cadorc, vencedor_ant)
+		if err != nil {
+			panic("Falha ao inserir fornecedores: " + err.Error())
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		panic("Falha ao commitar transação: " + err.Error())
+	}
+
+	cnx_fdb.Exec(`EXECUTE BLOCK AS
+					DECLARE VARIABLE ID_CADORC INTEGER;
+					declare variable ITEM INTEGER;
+					declare variable CODIF INTEGER;
+					DECLARE VARIABLE VLRUNI DOUBLE PRECISION;
+					BEGIN
+						FOR 
+							SELECT id_cadorc, item, codif, vlruni FROM vcadorc WHERE vencedor_ant = 'S' INTO :ID_CADORC, :ITEM, :CODIF, :VLRUNI
+						DO
+						BEGIN
+							UPDATE vcadorc SET ganhou = :codif, vlrganhou = :vlruni WHERE id_cadorc = :id_cadorc AND item = :item;
+						END
+					END`)
+
 	fmt.Println("fornecedores - Tempo de execução: ", time.Since(start))
 }

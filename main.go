@@ -12,5 +12,7 @@ func main() {
 	// compras.CentroCusto()
 
 	// compras.Cadorc()
-	compras.Icadorc()
+	// compras.Icadorc()
+	// compras.Fcadorc()
+	compras.Vcadorc()
 }

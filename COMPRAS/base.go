@@ -336,7 +336,8 @@ func CentroCusto() {
 									undorccodigo cod_ant
 								from
 									unidadeorcamentaria u
-								where undorcorgaoid = 3`, ) //$1 GetEmpresa()
+								join orgao o on u.undorcorgaoid = o.orgaoid 
+								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1`, GetEmpresa()) 
 	if err != nil {
 		panic("Falha ao executar select: " + err.Error())
 	}
@@ -350,7 +351,7 @@ func CentroCusto() {
 			panic("Falha ao ler resultado: " + err.Error())
 		}
 
-		_, err = insert.Exec(poder, orgao, destino, ccusto, descr, obs, placa, codccusto, 1, unidade, ocultar, id_ant, cod_ant)
+		_, err = insert.Exec(poder, orgao, destino, ccusto, descr, obs, placa, codccusto, GetEmpresa(), unidade, ocultar, id_ant, cod_ant)
 		if err != nil {
 			panic("Falha ao inserir dados: " + err.Error())
 		}
