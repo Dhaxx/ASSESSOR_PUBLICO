@@ -35,7 +35,7 @@ func Cadlic() {
 										WHEN modlic = 'PP01' THEN 8
 										WHEN modlic = 'LEIL' THEN 6
 										WHEN modlic = 'CS01' THEN 7
-									END AS modlic
+									END AS codmod
 								FROM (
 									SELECT
 										a.forprocessonumero AS numpro,
@@ -43,7 +43,7 @@ func Cadlic() {
 										CAST(forprocessoaudienciapublicadata AS VARCHAR) AS dtpub,
 										CAST(forprocessodatafimcred AS VARCHAR) AS dtenc,
 										forprocessohorainiciocred AS horabe,
-										SUBSTRING(forprocessojustificativalimitedispensa, 1, 1024) AS discr,
+										SUBSTRING(objetopadraodescricao, 1, 1024) AS discr,
 										CASE 
 											WHEN forprocessoagruparitens = 'S' THEN 'Menor Preco Global'
 											ELSE 'Menor Preco Unitario'
@@ -86,11 +86,19 @@ func Cadlic() {
 											WHEN a.forprocessoaudespcodigo IS NOT NULL THEN 'S'
 											ELSE 'N'
 										END AS enviotce,
-										COALESCE(forprocessocotacaoid, 0) AS id_ant
+										to_char(d.cotacaoprecosnumero,'fm00000/')||d.cotacaoprecosano%2000 numorc,
+										e.processonumero,
+										e.processoano
 									FROM
 										formalizacaoprocesso a
 									LEFT JOIN 
 										controletipo b ON a.forprocessomodalidadeid = b.controletipoid
+									left join 
+										objetopadrao c on c.objetopadraoid = a.forprocessoobjetoid
+									left join 
+										cotacaoprecos d on d.cotacaoprecosid = a.forprocessocotacaoid and d.cotacaoprecosversao = a.forprocessocotacaoversao 
+									left join 
+										processo e on e.processoid = d.cotacaoprecosprocessoid
 									WHERE 
 										forprocessougid = 2 
 									ORDER BY 
@@ -136,36 +144,40 @@ func Cadlic() {
 										codtce,
 										enviotce,
 										liberacompra,
-										id_cadorc,
-										empresa) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+										numorc,
+										empresa,
+										processo,
+										processo_ano,
+										codmod,
+										anomod) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	aux1, err := cnx_fdb.Query("select id_cadorc, id_ant from cadorc where flg_cotacao = 'S'")
-	if err != nil {
-		fmt.Println(err)
-	}
-	var id_cadorc, id_ant int
-	idsCadorc := make(map[int]int)
+	// aux1, err := cnx_fdb.Query("select id_cadorc, id_ant from cadorc where flg_cotacao = 'S'")
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+	// var id_cadorc, id_ant int
+	// idsCadorc := make(map[int]int)
 
-	for aux1.Next() {
-		err = aux1.Scan(&id_cadorc, &id_ant)
-		if err != nil {
-			fmt.Println(err)
-		}
-		idsCadorc[id_ant] = id_cadorc
-	}
+	// for aux1.Next() {
+	// 	err = aux1.Scan(&id_cadorc, &id_ant)
+	// 	if err != nil {
+	// 		fmt.Println(err)
+	// 	}
+	// 	idsCadorc[id_ant] = id_cadorc
+	// }
 
 	// Executa Insert
-	var datae, dtpub, dtenc, horabe, discr, discr7, modlic, dthom, dtadj, registropreco, ctlance, obra, proclic, tlance, mult_entidade, lei_invertfasestce, detalhe, discr9, codtce, enviotce nulls.String
-	var numpro, numero, numlic, microempresa, licnova, ano, processo_ano nulls.Int
-	var comp_ant, codmod int
+	var datae, dtpub, dtenc, horabe, discr, discr7, modlic, dthom, dtadj, registropreco, ctlance, obra, proclic, tlance, mult_entidade, lei_invertfasestce, detalhe, discr9, codtce, enviotce, numorc nulls.String
+	var numpro, numero, numlic, microempresa, licnova, ano, processo, processo_ano, codmod nulls.Int
+	var comp_ant int
 	var valor nulls.Float64
 	empresa := GetEmpresa()
 	for rows.Next() {
 		err = rows.Scan(&numpro, &datae, &dtpub, &dtenc, &horabe, &discr, &discr7, &modlic, &dthom, &dtadj, &comp_ant, &numero, &processo_ano, &registropreco, &ctlance, &obra, &proclic, &numlic, &microempresa, 
-						&licnova, &tlance, &mult_entidade, &ano, &lei_invertfasestce, &valor, &detalhe, &discr9, &codtce, &enviotce, &id_ant, &modlic)
+						&licnova, &tlance, &mult_entidade, &ano, &lei_invertfasestce, &valor, &detalhe, &discr9, &codtce, &enviotce, &numorc, &processo, &processo_ano, &codmod)
 		if err != nil {
 			panic(err)
 		}
@@ -195,7 +207,7 @@ func Cadlic() {
 		} else {
 			comp = 0
 		}
-		_, err = insert.Exec(numpro, datae, dtpub, dtenc, horabe, discr, discr7, modlic, dthom, dtadj, comp, numero, registropreco, ctlance, obra, proclic, numlic, microempresa, licnova, tlance, mult_entidade, ano, lei_invertfasestce, valor, detalhe, discr9, codtce, enviotce, liberacompra, id_cadorc, empresa, modlic)
+		_, err = insert.Exec(numpro, datae, dtpub, dtenc, horabe, discr, discr7, modlic, dthom, dtadj, comp, numero, registropreco, ctlance, obra, proclic, numlic, microempresa, licnova, tlance, mult_entidade, ano, lei_invertfasestce, valor, detalhe, discr9, codtce, enviotce, liberacompra, numorc, empresa, processo, processo_ano, codmod, processo_ano)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -204,20 +216,34 @@ func Cadlic() {
 	if err != nil {
 		fmt.Println(err)
 	}
+	fmt.Println("Cadlic - Tempo de execução: ", time.Since(start))
 
+	start = time.Now()
+	println("Atualizando CADORC...")
 	cnx_fdb.Exec(`EXECUTE BLOCK AS
-					DECLARE VARIABLE id_cadorc INTEGER;
-					DECLARE VARIABLE numlic INTEGER;
-					DECLARE VARIABLE proclic varchar(9);
+					DECLARE VARIABLE NUMLIC INTEGER;
+					DECLARE VARIABLE NUMORC VARCHAR(8);
+					DECLARE VARIABLE PROCLIC VARCHAR(9);
 					BEGIN
 						FOR 
-							SELECT id_cadorc, numlic, proclic FROM cadlic WHERE id_cadorc IS NOT NULL INTO :id_cadorc, :numlic, :proclic 
+							SELECT NUMLIC, PROCLIC, NUMORC FROM CADLIC WHERE NUMORC IS NOT NULL INTO :NUMLIC, :PROCLIC, :NUMORC
 						DO
 						BEGIN
-							UPDATE CADORC SET PROCLIC = :PROCLIC, NUMLIC = :NUMLIC WHERE ID_CADORC = :ID_CADORC;
+							UPDATE CADORC SET PROCLIC = :PROCLIC, NUMLIC = :NUMLIC WHERE NUMORC = :NUMORC;
 						END
-					END
-					`)	
-	
-	fmt.Println("Cadlic - Tempo de execução: ", time.Since(start))
+						UPDATE CADLIC SET NUMORC = NULL;
+					END`)	
+
+	cnx_fdb.Exec(`EXECUTE BLOCK AS
+					DECLARE VARIABLE DESCMOD VARCHAR(1024);
+					DECLARE VARIABLE CODMOD INTEGER;
+					BEGIN
+						FOR
+							SELECT CODMOD, DESCMOD FROM MODLIC INTO :CODMOD, :DESCMOD
+						DO
+						BEGIN
+							UPDATE CADLIC SET LICIT = :DESCMOD WHERE CODMOD = :CODMOD;
+						END
+					END`)
+	fmt.Println("Atualização de CADORC - Tempo de execução: ", time.Since(start))
 }

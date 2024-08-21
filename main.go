@@ -5,16 +5,16 @@ import (
 )
 
 func main() {
-	// compras.Cadunimedida()
-	// compras.GrupoSubgrupo()
+	// go compras.Cadunimedida()
+	// go compras.GrupoSubgrupo()
+	// go compras.Destino()
+	// go compras.CentroCusto()
 	// compras.Cadest()
-	// compras.Destino()
-	// compras.CentroCusto()
 
 	// compras.Cadorc()
 	// compras.Icadorc()
 	// compras.Fcadorc()
 	// compras.Vcadorc()
 
-	compras.Cadlic()
+	compras.Cadlic()	
 }
