@@ -2,6 +2,7 @@ package compras
 
 import (
 	"ASSESSOR_PUBLICO/CONEXAO"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -12,13 +13,13 @@ func Cadlic() {
 	start := time.Now()
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
-		fmt.Println(err)
+		panic("Falha ao conectar ao banco:" + err.Error())
 	}
 	defer cnx_fdb.Close()
 
 	cnx_pg, err := conexao.ConexaoOrigem()
 	if err != nil {
-		fmt.Println(err)
+		panic("Falha ao conectar ao banco:" + err.Error())
 	}
 	defer cnx_pg.Close()
 
@@ -107,7 +108,7 @@ func Cadlic() {
 								) AS rn;
 								`)
 	if err != nil {
-		fmt.Println(err)
+		panic("Erro ao consultar no banco: " + err.Error())
 	}
 
 	tx, err := cnx_fdb.Begin()
@@ -151,23 +152,8 @@ func Cadlic() {
 										codmod,
 										anomod) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
-		fmt.Println(err)
+		panic("Erro ao preparar insert " + err.Error())
 	}
-
-	// aux1, err := cnx_fdb.Query("select id_cadorc, id_ant from cadorc where flg_cotacao = 'S'")
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
-	// var id_cadorc, id_ant int
-	// idsCadorc := make(map[int]int)
-
-	// for aux1.Next() {
-	// 	err = aux1.Scan(&id_cadorc, &id_ant)
-	// 	if err != nil {
-	// 		fmt.Println(err)
-	// 	}
-	// 	idsCadorc[id_ant] = id_cadorc
-	// }
 
 	// Executa Insert
 	var datae, dtpub, dtenc, horabe, discr, discr7, modlic, dthom, dtadj, registropreco, ctlance, obra, proclic, tlance, mult_entidade, lei_invertfasestce, detalhe, discr9, codtce, enviotce, numorc nulls.String
@@ -179,7 +165,7 @@ func Cadlic() {
 		err = rows.Scan(&numpro, &datae, &dtpub, &dtenc, &horabe, &discr, &discr7, &modlic, &dthom, &dtadj, &comp_ant, &numero, &processo_ano, &registropreco, &ctlance, &obra, &proclic, &numlic, &microempresa, 
 						&licnova, &tlance, &mult_entidade, &ano, &lei_invertfasestce, &valor, &detalhe, &discr9, &codtce, &enviotce, &numorc, &processo, &processo_ano, &codmod)
 		if err != nil {
-			panic(err)
+			panic("Erro ao scannear variáveis: " + err.Error())
 		}
 
 		liberacompra := `N`
@@ -209,12 +195,12 @@ func Cadlic() {
 		}
 		_, err = insert.Exec(numpro, datae, dtpub, dtenc, horabe, discr, discr7, modlic, dthom, dtadj, comp, numero, registropreco, ctlance, obra, proclic, numlic, microempresa, licnova, tlance, mult_entidade, ano, lei_invertfasestce, valor, detalhe, discr9, codtce, enviotce, liberacompra, numorc, empresa, processo, processo_ano, codmod, processo_ano)
 		if err != nil {
-			fmt.Println(err)
+			panic("Erro ao fazer inserção de dados" + err.Error())
 		}
 	}
 	err = tx.Commit()
 	if err != nil {
-		fmt.Println(err)
+		panic("Erro ao fechar transaction" + err.Error())
 	}
 	fmt.Println("Cadlic - Tempo de execução: ", time.Since(start))
 
@@ -246,4 +232,172 @@ func Cadlic() {
 						END
 					END`)
 	fmt.Println("Atualização de CADORC - Tempo de execução: ", time.Since(start))
+}
+
+func Cadprolic() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_pg, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_pg.Close()
+
+	// Criando Campo Auxiliar
+	cnx_fdb.Exec("ALTER TABLE CADPROLIC ADD ITEM_POR_LOTE INTEGER")
+
+	// Limpando Tabela
+	cnx_fdb.Exec("DELETE FROM CADPROLIC")
+	cnx_fdb.Exec("DELETE FROM CADLOTELIC")
+
+	// Query
+	rows, err := cnx_pg.Query(`select
+								to_char(c.cotacaoprecosnumero, 'fm00000/')||cotacaoprecosano%2000 numorc,
+								to_char(d.loteordem, 'fm00000000') lote,
+								row_number() over (partition by c.cotacaoprecosid order by estimativaitemid) as item,
+								case 
+									when d.loteordem is not null then row_number() over (partition by c.cotacaoprecosid, loteordem order by c.cotacaoprecosid, loteordem, estimativaitemid)
+									else estimativaitemid
+								end as item_por_lote,
+								a.estimativaitemid itemorc,
+								a.estimativaitemmaterialid,
+								a.estimativaitemqtde,
+								a.estimativaitemmenorvalor,
+								a.estimativaitemmenorvalortotal
+							from
+								estimativaitem a
+							join estimativa b on
+								a.estimativaid = b.estimativaid
+							join cotacaoprecos c on
+								c.cotacaoprecosid = b.estimativacotacaoid
+								and c.cotacaoprecosversao = b.estimativacotacaoversao
+							left join lote d on d.loteid = a.estimativaitemloteid and d.loteversao = a.estimativaitemloteversao 
+							join formalizacaoprocesso e on e.forprocessocotacaoid = b.estimativacotacaoid and e.forprocessocotacaoversao = b.estimativacotacaoversao 
+							where estimativaitemmenorvalor is not null and cotacaoprecosugid = $1`, GetEmpresa())
+	if err != nil {
+		panic("Erro ao consultar dados: " + err.Error())
+	}
+
+	// Consulta Auxiliar
+	cadpros := make(map[int]string)
+	aux1, err := cnx_fdb.Query(`select cadpro, codreduz from cadest`)
+	if err != nil {
+		panic("Erro ao consultar cadpro" + err.Error())
+	}
+	for aux1.Next() {
+		var cadpro string
+		var codreduz int
+		err = aux1.Scan(&cadpro, &codreduz)
+		if err != nil {
+			panic("Erro ao scannear cadpro" + err.Error())
+		}
+		cadpros[codreduz] = cadpro
+	}
+
+	// Consulta Auxiliar
+	codccustos := make(map[string]map[int]int) 
+	aux2, err := cnx_fdb.Query(`select a.numorc, a.item, a.codccusto from icadorc a JOIN cadorc b ON a.NUMORC = b.NUMORC WHERE b.NUMLIC IS NOT null`)
+	if err != nil {
+		panic("Erro ao consultar icadorc" + err.Error())
+	}
+	for aux2.Next() {
+		var numorc string
+		var item, codccusto int
+		err = aux2.Scan(&numorc, &item, &codccusto)
+		if err != nil {
+			panic("Erro ao scannear icadorc" + err.Error())
+		}
+		if _, ok := codccustos[numorc]; !ok {
+			codccustos[numorc] = make(map[int]int)
+		}
+		codccustos[numorc][item] = codccusto
+	}
+
+	// Consulta Auxiliar
+	numlics := make(map[string]int)
+	aux3, err := cnx_fdb.Query(`select numorc, numlic from cadorc where numlic is not null`)
+	if err != nil {
+		panic("Erro ao consultar cadorc" + err.Error())
+	}
+	for aux3.Next() {
+		var numorc string
+		var numlic int
+		err = aux3.Scan(&numorc, &numlic)
+		if err != nil {
+			panic("Erro ao scannear cadorc" + err.Error())
+		}
+		numlics[numorc] = numlic
+	}
+
+	// Consulta Auxiliar
+	idcadors := make(map[string]int)
+	aux4, err := cnx_fdb.Query(`select numorc, id_cadorc from cadorc where numlic is not null`)
+	if err != nil {
+		panic("Erro ao consultar cadorc" + err.Error())
+	}
+	for aux4.Next() {
+		var numorc string
+		var id_cadorc int
+		err = aux4.Scan(&numorc, &id_cadorc)
+		if err != nil {
+			panic("Erro ao scannear cadorc" + err.Error())
+		}
+		idcadors[numorc] = id_cadorc
+	}
+
+	// Prepara Insert
+	insert, err := cnx_fdb.Prepare(`insert into cadprolic (numorc, lotelic, item, item_mask, itemorc, cadpro, codccusto, quan1, vamed1, vatomed1, reduz, microempresa, tlance, item_ag, numlic, id_cadorc, item_lote, item_por_lote) 
+									values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		panic("Erro ao preparar insert: " + err.Error())
+	}
+
+	var numorc, cadpro, reduz, microempresa, tlance string
+	var lote nulls.String
+	var codreduz, codccusto, item, numlic, id_cadorc int
+	var itemorc, item_por_lote nulls.Int
+	var quan1, vamed1, vatomed1 nulls.Float64
+	for rows.Next() {
+		err = rows.Scan(&numorc, &lote, &item, &item_por_lote, &itemorc, &codreduz, &quan1, &vamed1, &vatomed1)
+		if err != nil {
+			panic("Erro ao scannear variáveis: " + err.Error())
+		}
+
+		if lote.Valid {
+			existeLote := cnx_fdb.QueryRow(`select 1 from cadlotelic where lotelic = ? and numlic = ?`, lote, numlic).Scan()
+			if existeLote == sql.ErrNoRows {
+				cnx_aux, err := conexao.ConexaoDestino()
+				if err != nil {
+					panic("Erro ao conectar no banco: " + err.Error())
+				}
+				func () {
+					descr := "Lote " + lote.String
+					_, err = cnx_aux.Exec(`insert into cadlotelic (descr, lotelic, numlic) values (?,?,?)`, descr, lote, numlic)
+					if err != nil {
+						return
+					}
+				}()
+				cnx_aux.Close()
+			}
+		}
+
+		cadpro = cadpros[codreduz]
+		codccusto = codccustos[numorc][item]
+		reduz = `N`
+		microempresa = `N`
+		tlance = `$`
+		numlic = numlics[numorc]
+		id_cadorc = idcadors[numorc]
+
+		_, err = insert.Exec(numorc, lote, item, item, itemorc, cadpro, codccusto, quan1, vamed1, vatomed1, reduz, microempresa, tlance, item, numlic, id_cadorc, item, item_por_lote)
+		if err != nil {
+			panic("Erro ao inserir dados: " + err.Error())
+		}
+	}
+	fmt.Println("Cadprolic - Tempo de execução: ", time.Since(start))
 }

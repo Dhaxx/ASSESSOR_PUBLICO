@@ -1,14 +1,33 @@
 package main
 
 import (
-	compras "ASSESSOR_PUBLICO/COMPRAS"
+	"ASSESSOR_PUBLICO/COMPRAS"
+	// "sync"
 )
 
 func main() {
-	// go compras.Cadunimedida()
-	// go compras.GrupoSubgrupo()
-	// go compras.Destino()
-	// go compras.CentroCusto()
+	// var wg sync.WaitGroup
+    // wg.Add(4)
+
+    // go func() {
+    //     defer wg.Done()
+    //     compras.Cadunimedida()
+    // }()
+
+    // go func() {
+    //     defer wg.Done()
+    //     compras.GrupoSubgrupo()
+    // }()
+
+    // go func() {
+    //     defer wg.Done()
+    //     compras.Destino()
+    // }()
+
+    // go func() {
+    //     defer wg.Done()
+    //     compras.CentroCusto()
+    // }()
 	// compras.Cadest()
 
 	// compras.Cadorc()
@@ -16,5 +35,6 @@ func main() {
 	// compras.Fcadorc()
 	// compras.Vcadorc()
 
-	compras.Cadlic()	
+	// compras.Cadlic()	
+	compras.Cadprolic()
 }
