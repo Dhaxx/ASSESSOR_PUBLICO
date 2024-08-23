@@ -45,10 +45,11 @@ func Cadlic() {
 										CAST(forprocessodatafimcred AS VARCHAR) AS dtenc,
 										forprocessohorainiciocred AS horabe,
 										SUBSTRING(objetopadraodescricao, 1, 1024) AS discr,
-										CASE 
+										/*CASE 
 											WHEN forprocessoagruparitens = 'S' THEN 'Menor Preco Global'
 											ELSE 'Menor Preco Unitario'
-										END AS discr7,
+										END AS discr7,*/
+										'Menor Preco Unitario' AS discr7,
 										CASE 
 											WHEN b.controletipocampo = 40 AND controletipoid = 670 THEN 'IN01'
 											WHEN b.controletipocampo = 40 AND controletipoid IN (671, 681, 678) THEN 'DI01'
@@ -171,11 +172,11 @@ func Cadlic() {
 		liberacompra := `N`
 		comp := 0
 
-		if comp_ant == 1 || comp_ant == 14 { // Em formalização
+		if comp_ant == 1 || comp_ant == 15 { // Em formalização
 			comp = 0 
 		} else if comp_ant == 2 { // Em andamento
 			comp = 1
-		} else if comp_ant == 3 || comp_ant == 8 { // Ratificada ou Encerrado
+		} else if comp_ant == 3 || comp_ant == 8 || comp_ant == 16 { // Ratificada ou Encerrado
 			comp = 3
 			liberacompra = `S`
 		} else if comp_ant == 4 { // Fracassada
@@ -186,13 +187,12 @@ func Cadlic() {
 			comp = 7
 		} else if comp_ant == 9 { // Suspenso
 			comp = 8
-		} else if comp_ant == 10 || comp_ant == 12 || comp_ant == 13 || comp_ant == 15 { // Homologada, adjudicada parcialmente, homologada parcialmente ou ratificada parcialmente
+		} else if comp_ant == 10 || comp_ant == 11 || comp_ant == 13 || comp_ant == 14 { // Adjudicada, Homologada, adjudicada parcialmente, homologada parcialmente ou ratificada parcialmente
 			comp = 2
-		} else if comp_ant == 11 { // Deserta
+		} else if comp_ant == 12 { // Deserta
 			comp = 5
-		} else {
-			comp = 0
 		}
+
 		_, err = insert.Exec(numpro, datae, dtpub, dtenc, horabe, discr, discr7, modlic, dthom, dtadj, comp, numero, registropreco, ctlance, obra, proclic, numlic, microempresa, licnova, tlance, mult_entidade, ano, lei_invertfasestce, valor, detalhe, discr9, codtce, enviotce, liberacompra, numorc, empresa, processo, processo_ano, codmod, processo_ano)
 		if err != nil {
 			panic("Erro ao fazer inserção de dados" + err.Error())
@@ -231,6 +231,7 @@ func Cadlic() {
 							UPDATE CADLIC SET LICIT = :DESCMOD WHERE CODMOD = :CODMOD;
 						END
 					END`)
+	cnx_fdb.Exec(`UPDATE CADLIC SET anomod = ano where anomod is null`) 
 	fmt.Println("Atualização de CADORC - Tempo de execução: ", time.Since(start))
 }
 
@@ -400,4 +401,167 @@ func Cadprolic() {
 		}
 	}
 	fmt.Println("Cadprolic - Tempo de execução: ", time.Since(start))
+}
+
+func CadprolicDetalhe() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+
+	cnx_fdb.Exec(`ALTER TRIGGER TBI_CADPROLIC_DETALHE_BLOQUEIO INACTIVE;
+					INSERT INTO CADPROLIC_DETALHE (NUMLIC,item,CADPRO,quan1,VAMED1,VATOMED1,marca,CODCCUSTO,ITEM_CADPROLIC)
+					select numlic, item, cadpro, quan1, vamed1, vatomed1, marca, codccusto, item from cadprolic b where
+					not exists (select 1 from cadprolic_detalhe c where b.numlic = c.numlic and b.item = c.item);
+					ALTER TRIGGER TBI_CADPROLIC_DETALHE_BLOQUEIO ACTIVE;`)
+	fmt.Println("CadprolicDetalhe - Tempo de execução: ", time.Since(start))
+}
+
+func ProlicProlics() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_pg, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_pg.Close()
+
+	// Limpando Tabela
+	cnx_fdb.Exec("DELETE FROM PROLICS")
+	cnx_fdb.Exec("DELETE FROM PROLIC")
+
+	// Query
+	rows, err := cnx_pg.Query(`select distinct
+									b.pessoaid,
+									substring(b.pessoanome,1,40) nome,
+									--1 credenciado, 2 habilitado	
+									'A' status,
+									--a.habilitacaolicsituacaofornecedor,
+									c.forprocessoid
+									--c.forprocessoano
+								from
+									habilitacaolicitante a
+								join pessoa b on
+									a.habilitacaolicfornid = b.pessoaid
+								join formalizacaoprocesso c on
+									c.forprocessoid = a.habilitacaolicforprocessoid
+									and a.habilitacaolicforprocessoversao = c.forprocessoversao
+								where
+									c.forprocessougid = $1`, GetEmpresa())
+	if err != nil {
+		panic("Erro ao consultar dados: " + err.Error())
+	}
+
+	// Prepara Insert
+	insertProlic, err := cnx_fdb.Prepare(`insert into prolic (codif, nome, status, numlic) values (?,?,?,?)`)
+	if err != nil {
+		panic("Erro ao preparar insert: " + err.Error())
+	}
+	insertProlics, err := cnx_fdb.Prepare(`insert into prolics (sessao, codif, status, representante, numlic, usa_preferencia) values (?,?,?,?,?,?)`)
+	if err != nil {
+		panic("Erro ao preparar insert: " + err.Error())
+	}
+
+	var codif, numlic, sessao int
+	var nome, status, usa_preferencia string
+	for rows.Next() {
+		err = rows.Scan(&codif, &nome, &status, &numlic)
+		if err != nil {
+			panic("Erro ao scannear variáveis: " + err.Error())
+		}
+		sessao = 1
+		usa_preferencia = `N`
+		_, err = insertProlic.Exec(codif, nome, status, numlic)
+		if err != nil {
+			panic("Erro ao inserir dados: " + err.Error())
+		}
+		_, err = insertProlics.Exec(sessao, codif, status, nome, numlic, usa_preferencia)
+		if err != nil {
+			panic("Erro ao inserir dados: " + err.Error())
+		}
+	}
+	cnx_fdb.Exec(`alter trigger TBI_CADPRO_STATUS_BLOQUEIO inactive;
+					INSERT INTO cadpro_status (numlic, sessao, itemp, item, telafinal)
+					SELECT b.NUMLIC, 1 AS sessao, a.item, a.item, 'I_ENCERRAMENTO'
+					FROM CADPROLIC a
+					JOIN cadlic b ON a.NUMLIC = b.NUMLIC
+					WHERE NOT EXISTS (
+						SELECT 1
+						FROM cadpro_status c
+						WHERE a.numlic = c.numlic);`)
+	cnx_fdb.Exec(`INSERT INTO CADLIC_SESSAO (NUMLIC, SESSAO, DTREAL, HORREAL, COMP, DTENC, HORENC, SESSAOPARA, MOTIVO) 
+                  SELECT L.NUMLIC, CAST(1 AS INTEGER), L.DTREAL, L.HORREAL, L.COMP, L.DTENC, L.HORENC, CAST('T' AS VARCHAR(1)), CAST('O' AS VARCHAR(1)) FROM CADLIC L 
+                  WHERE numlic not in (SELECT FIRST 1 S.NUMLIC FROM CADLIC_SESSAO S WHERE S.NUMLIC = L.NUMLIC)`)
+	fmt.Println("ProlicProlics - Tempo de execução: ", time.Since(start))
+}
+
+func CadproProposta() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_pg, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_pg.Close()
+
+	// Limpando Tabela
+	cnx_fdb.Exec("DELETE FROM CADPRO_PROPOSTA")
+
+	// Query
+	rows, err := cnx_pg.Query(`select
+									a.itemcomprapropfornecedorid codif,
+									1 sessao,
+									c.pedidocompraforprocessoid,
+									to_char(d.loteordem, 'fm00000000') lote,
+									b.itemcompranumitemseq item,
+									b.itemcompraquantidade,
+									a.itemcomprapropvalorunitario,
+									a.itemcomprapropvalortotal,
+									'C' status,
+									1 subem
+								from
+									itemcompraproposta a
+								join itemcompra b on
+									a.itemcompraid = b.itemcompraid
+									and a.itemcompraversao = b.itemcompraversao
+								join pedidocompra c on c.pedidocompraid = b.itemcomprapedidoid and c.pedidocompraversao = b.itemcomprapedidoversao 
+								left join lote d on b.itemcompraloteid = d.loteid 
+								where
+									c.pedidocompraugid = $1 and c.pedidocompracotacaoid is not null --and c.pedidocompraforprocessoid = 29715`, GetEmpresa())
+	if err != nil {
+		panic("Erro ao consultar dados: " + err.Error())
+	}
+
+	// Insert 
+	insert, err := cnx_fdb.Prepare(`insert into cadpro_proposta (codif, sessao, numlic, lotelic, itemp, item, quan1, vaun1, vato1, status, subem) values (?,?,?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		panic("Erro ao preparar insert: " + err.Error())
+	}
+
+	var codif, sessao, numlic, itemp, subem int
+	var quan1, vaun1, vato1 nulls.Float64
+	var status, lotelic nulls.String
+	for rows.Next() {
+		err = rows.Scan(&codif, &sessao, &numlic, &lotelic, &itemp, &quan1, &vaun1, &vato1, &status, &subem)
+		if err != nil {
+			panic("Erro ao scannear variáveis: " + err.Error())
+		}
+
+		_, err = insert.Exec(codif, sessao, numlic, lotelic, itemp, itemp, quan1, vaun1, vato1, status, subem)
+		if err != nil {
+			panic("Erro ao inserir dados: " + err.Error())
+		}
+	}
+	fmt.Println("CadproProposta - Tempo de execução: ", time.Since(start))
 }

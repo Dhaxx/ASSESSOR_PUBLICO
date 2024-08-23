@@ -356,5 +356,35 @@ func CentroCusto() {
 			panic("Falha ao inserir dados: " + err.Error())
 		}
 	}
+	cnx_fdb.Exec(`INSERT
+						INTO
+						centrocusto (poder,
+						orgao,
+						destino,
+						ccusto,
+						descr,
+						obs,
+						placa,
+						codccusto,
+						empresa,
+						unidade,
+						ocultar,
+						id_ant,
+						cod_ant)
+					SELECT FIRST 1
+						poder,
+						orgao,
+						DESTINO,
+						CCUSTO,
+						'CONVERSAO',
+						NULL,
+						NULL,
+						0,
+						empresa,
+						NULL,
+						'N',
+						NULL,
+						NULL
+					FROM CENTROCUSTO `)
 	fmt.Println("CentroCusto - Tempo de execução: ", time.Since(start))
 }
