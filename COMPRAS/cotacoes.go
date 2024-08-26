@@ -51,7 +51,8 @@ func Cadorc() {
 										solicitante,
 										numorc_ant,
 										flg_cotacao,
-										id_ant) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+										id_ant,
+										numlic) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic("Falha ao preparar insert: " + err.Error())
 	}
@@ -67,21 +68,22 @@ func Cadorc() {
 			substring(pedidocomprajustificativa, 1, 1024) descr,
 			'NORMAL' prioridade,
 			'Nº Solicitação: '||to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 || coalesce(' - ' || pedidocompraobservacao,'') obs,
-			case when pedidocomprasituacao = 2 then 'AB' when pedidocomprasituacao = 3 then 'AP' else 'CA' end status,
-			'S' liberado,
+			case when pedidocompraforprocessoid is not null then 'EC' when pedidocomprasituacao = 2 then 'AB' when pedidocomprasituacao = 3 then 'AP' else 'CA' end status,
+			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
 			coalesce(a.pedidocompraunidorcid,0) codccusto,
 			'L' liberado_tela,
 			c.pessoanome,
 			to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 numorc_ant,
 			'N' flg_cotacao,
-			a.pedidocompraid id_ant
+			a.pedidocompraid id_ant,
+			pedidocompraforprocessoid numlic
 		from
 			pedidocompra a
 		left join cotacaoprecos b on
 			a.pedidocompracotacaoid = b.cotacaoprecosid and a.pedidocompracotacaoversao = b.cotacaoprecosversao 
 		left join pessoa c on
 			a.pedidocomprasolicitanteid = c.pessoaid
-		where a.pedidocompraugid = 2 and b.cotacaoprecosnumero is null
+		where a.pedidocompraugid = $1 and b.cotacaoprecosnumero is null
 		union all
 		--Cotações
 		select
@@ -94,39 +96,39 @@ func Cadorc() {
 			'NORMAL' prioridade,
 			'Nº Solicitação: '||to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 || coalesce(' - ' || pedidocompraobservacao,'') obs,
 			case when cotacaoprecossituacao = 1 then 'CO' when pedidocomprasituacao = 2 then 'EC' else 'CA' end status,
-			'S' liberado,
+			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
 			coalesce(a.pedidocompraunidorcid,0) codccusto,
 			'L' liberado_tela,
 			c.pessoanome,
 			to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 numorc_ant,
 			'S',
-			cotacaoprecosid
+			cotacaoprecosid,
+			null --pedidocompraforprocessoid numlic
 		from
 			pedidocompra a
 		join cotacaoprecos b on
 			a.pedidocompracotacaoid = b.cotacaoprecosid and a.pedidocompracotacaoversao = b.cotacaoprecosversao 
 		left join pessoa c on
 			a.pedidocomprasolicitanteid = c.pessoaid
-		where a.pedidocompraugid = 2
-		order by data desc
-	`) // GetEmpresa()
+		where a.pedidocompraugid = $2
+		order by data desc`, GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar pedidos de compra: " + err.Error())
 	}
 
-	var id_cadorc, codccusto, id_ant nulls.Int
+	var id_cadorc, codccusto, id_ant, numlic nulls.Int
 	var num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, liberado_tela, solicitante, numorc_ant, flg_cotacao nulls.String
 	empresa := nulls.NewInt(GetEmpresa())
 
 	for rows.Next() {
-		err = rows.Scan(&id_cadorc, &num, &ano, &numorc, &dtorc, &descr, &prioridade, &obs, &status, &liberado, &codccusto, &liberado_tela, &solicitante, &numorc_ant, &flg_cotacao, &id_ant)
+		err = rows.Scan(&id_cadorc, &num, &ano, &numorc, &dtorc, &descr, &prioridade, &obs, &status, &liberado, &codccusto, &liberado_tela, &solicitante, &numorc_ant, &flg_cotacao, &id_ant, &numlic)
 		if err != nil {
 			panic("Falha ao ler pedidos de compra: " + err.Error())
 		}
 
-		_, err = insert.Exec(id_cadorc, num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, codccusto, liberado_tela, empresa, solicitante, numorc_ant, flg_cotacao, id_ant)
+		_, err = insert.Exec(id_cadorc, num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, codccusto, liberado_tela, empresa, solicitante, numorc_ant, flg_cotacao, id_ant, numlic)
 		if err != nil {
-			fmt.Println("Falha ao Inserir Registro na Cadorc: ", err)
+			// fmt.Println("Falha ao Inserir Registro na Cadorc: ", err)
 			continue
 		}
 	}
@@ -265,7 +267,7 @@ func Icadorc() {
 		}
 	}
 	cnx_fdb.Exec("UPDATE ICADORC SET ITEMORC = ITEM")
-	fmt.Println("itens - Tempo de execução: ", time.Since(start))
+	fmt.Println("Icadorc - Tempo de execução: ", time.Since(start))
 }
 
 func Fcadorc() {
@@ -377,7 +379,7 @@ func Fcadorc() {
 			panic("Falha ao inserir fornecedores: " + err.Error())
 		}
 	}
-	fmt.Println("fcadorc - Tempo de execução: ", time.Since(start))
+	fmt.Println("Fcadorc - Tempo de execução: ", time.Since(start))
 }
 
 func Vcadorc() {
@@ -521,5 +523,5 @@ func Vcadorc() {
 						END
 					END`)
 
-	fmt.Println("fornecedores - Tempo de execução: ", time.Since(start))
+	fmt.Println("Vcadorc - Tempo de execução: ", time.Since(start))
 }
