@@ -255,29 +255,68 @@ func Cadprolic() {
 	cnx_fdb.Exec("DELETE FROM CADLOTELIC")
 
 	// Query
-	rows, err := cnx_pg.Query(`select
-								to_char(c.cotacaoprecosnumero, 'fm00000/')||cotacaoprecosano%2000 numorc,
-								to_char(d.loteordem, 'fm00000000') lote,
-								row_number() over (partition by c.cotacaoprecosid order by estimativaitemid) as item,
-								case 
-									when d.loteordem is not null then row_number() over (partition by c.cotacaoprecosid, loteordem order by c.cotacaoprecosid, loteordem, estimativaitemid)
-									else estimativaitemid
-								end as item_por_lote,
-								a.estimativaitemid itemorc,
-								a.estimativaitemmaterialid,
-								a.estimativaitemqtde,
-								a.estimativaitemmenorvalor,
-								a.estimativaitemmenorvalortotal
-							from
-								estimativaitem a
-							join estimativa b on
-								a.estimativaid = b.estimativaid
-							join cotacaoprecos c on
-								c.cotacaoprecosid = b.estimativacotacaoid
-								and c.cotacaoprecosversao = b.estimativacotacaoversao
-							left join lote d on d.loteid = a.estimativaitemloteid and d.loteversao = a.estimativaitemloteversao 
-							join formalizacaoprocesso e on e.forprocessocotacaoid = b.estimativacotacaoid and e.forprocessocotacaoversao = b.estimativacotacaoversao 
-							where estimativaitemmenorvalor is not null and cotacaoprecosugid = $1`, GetEmpresa())
+	rows, err := cnx_pg.Query(`SELECT 
+								numlic,
+								lote,
+								item,
+								itemorc,
+								codreduz,
+								MIN(codccusto) AS codccusto,  -- Pega o menor valor de codccusto dentro do agrupamento
+								SUM(quan1) AS quan1,          -- Soma as quantidades
+								AVG(vamed1) AS vamed1,        -- Considerando que vamed1 é o mesmo valor, usando AVG para pegar um valor representativo
+								SUM(vatomed1) AS vatomed1,    -- Soma os valores totais
+								MIN(item_lc147) AS item_lc147 -- Pega o menor valor de item_lc147 dentro do agrupamento
+							FROM (
+								SELECT DISTINCT 
+									numlic,
+									lote,
+									item,
+									itemorc, 
+									itemcompramaterialid AS codreduz, 
+									codccusto, 
+									COALESCE(itemcompraquantidade, 0) AS quan1, 
+									COALESCE(itemcomprapropvalorunitario, 0) AS vamed1, 
+									COALESCE(itemcomprapropvalortotal, 0) AS vatomed1,
+									item_lc147
+								FROM (
+									SELECT
+										a.itemcomprapropfornecedorid AS codif,
+										1 AS sessao,
+										c.pedidocompraforprocessoid AS numlic,
+										TO_CHAR(d.loteordem, 'fm00000000') AS lote,
+										COALESCE(b.itemcompranumitemseq, b.itemcompraordem) AS item,
+										e.item AS itemorc,
+										e.codccusto,
+										b.itemcompramaterialid,
+										b.itemcompraquantidade,
+										a.itemcomprapropvalorunitario,
+										a.itemcomprapropvalortotal,
+										'C' AS status,
+										1 AS subem,
+										CASE 
+											WHEN itemcompratipocota IN (1, 2) THEN NULL 
+											ELSE e.item 
+										END AS item_lc147
+									FROM
+										itemcompraproposta a
+									JOIN itemcompra b ON
+										a.itemcompraid = b.itemcompraid
+										AND a.itemcompraversao = b.itemcompraversao
+									JOIN pedidocompra c ON 
+										c.pedidocompraid = b.itemcomprapedidoid 
+										AND c.pedidocompraversao = b.itemcomprapedidoversao 
+									LEFT JOIN lote d ON 
+										b.itemcompraloteid = d.loteid 
+									LEFT JOIN icadorc e ON 
+										e.pedidocompraforprocessoid = c.pedidocompraforprocessoid 
+										AND e.codreduz = b.itemcompramaterialid
+									WHERE
+										c.pedidocompraugid = $1 and itemcompraorigem <> 4
+								) AS rn 
+								--WHERE numlic = 716
+							) AS aggregated_data where codreduz is not null 
+							GROUP BY 
+								numlic, lote, item, itemorc, codreduz;`, GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -299,27 +338,8 @@ func Cadprolic() {
 	}
 
 	// Consulta Auxiliar
-	codccustos := make(map[string]map[int]int) 
-	aux2, err := cnx_fdb.Query(`select a.numorc, a.item, a.codccusto from icadorc a JOIN cadorc b ON a.NUMORC = b.NUMORC WHERE b.NUMLIC IS NOT null`)
-	if err != nil {
-		panic("Erro ao consultar icadorc" + err.Error())
-	}
-	for aux2.Next() {
-		var numorc string
-		var item, codccusto int
-		err = aux2.Scan(&numorc, &item, &codccusto)
-		if err != nil {
-			panic("Erro ao scannear icadorc" + err.Error())
-		}
-		if _, ok := codccustos[numorc]; !ok {
-			codccustos[numorc] = make(map[int]int)
-		}
-		codccustos[numorc][item] = codccusto
-	}
-
-	// Consulta Auxiliar
-	numlics := make(map[string]int)
-	aux3, err := cnx_fdb.Query(`select numorc, numlic from cadorc where numlic is not null`)
+	numlics := make(map[int]string)
+	aux3, err := cnx_fdb.Query(`SELECT MIN(numorc) AS numorc, numlic FROM cadorc WHERE numlic IS NOT NULL GROUP BY numlic; `)
 	if err != nil {
 		panic("Erro ao consultar cadorc" + err.Error())
 	}
@@ -330,27 +350,11 @@ func Cadprolic() {
 		if err != nil {
 			panic("Erro ao scannear cadorc" + err.Error())
 		}
-		numlics[numorc] = numlic
-	}
-
-	// Consulta Auxiliar
-	idcadors := make(map[string]int)
-	aux4, err := cnx_fdb.Query(`select numorc, id_cadorc from cadorc where numlic is not null`)
-	if err != nil {
-		panic("Erro ao consultar cadorc" + err.Error())
-	}
-	for aux4.Next() {
-		var numorc string
-		var id_cadorc int
-		err = aux4.Scan(&numorc, &id_cadorc)
-		if err != nil {
-			panic("Erro ao scannear cadorc" + err.Error())
-		}
-		idcadors[numorc] = id_cadorc
+		numlics[numlic] = numorc
 	}
 
 	// Prepara Insert
-	insert, err := cnx_fdb.Prepare(`insert into cadprolic (numorc, lotelic, item, item_mask, itemorc, cadpro, codccusto, quan1, vamed1, vatomed1, reduz, microempresa, tlance, item_ag, numlic, id_cadorc, item_lote, item_por_lote) 
+	insert, err := cnx_fdb.Prepare(`insert into cadprolic (numorc, lotelic, item, item_mask, itemorc, cadpro, codccusto, quan1, vamed1, vatomed1, reduz, microempresa, tlance, item_ag, numlic, id_cadorc, item_lote, item_lc147) 
 									values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic("Erro ao preparar insert: " + err.Error())
@@ -359,10 +363,10 @@ func Cadprolic() {
 	var numorc, cadpro, reduz, microempresa, tlance string
 	var lote nulls.String
 	var codreduz, codccusto, item, numlic, id_cadorc int
-	var itemorc, item_por_lote nulls.Int
+	var itemorc, ilc147 nulls.Int
 	var quan1, vamed1, vatomed1 nulls.Float64
 	for rows.Next() {
-		err = rows.Scan(&numorc, &lote, &item, &item_por_lote, &itemorc, &codreduz, &quan1, &vamed1, &vatomed1)
+		err = rows.Scan(&numlic, &lote, &item, &itemorc, &codreduz, &codccusto, &quan1, &vamed1, &vatomed1, &ilc147)
 		if err != nil {
 			panic("Erro ao scannear variáveis: " + err.Error())
 		}
@@ -386,136 +390,133 @@ func Cadprolic() {
 		}
 
 		cadpro = cadpros[codreduz]
-		codccusto = codccustos[numorc][item]
 		reduz = `N`
 		microempresa = `N`
 		tlance = `$`
-		numlic = numlics[numorc]
-		id_cadorc = idcadors[numorc]
 
-		_, err = insert.Exec(numorc, lote, item, item, itemorc, cadpro, codccusto, quan1, vamed1, vatomed1, reduz, microempresa, tlance, item, numlic, id_cadorc, item, item_por_lote)
+		_, err = insert.Exec(numorc, lote, item, item, itemorc, cadpro, codccusto, quan1, vamed1, vatomed1, reduz, microempresa, tlance, item, numlic, id_cadorc, item, ilc147)
 		if err != nil {
-			panic("Erro ao inserir dados: " + err.Error())
+			continue
 		}
 	}
 
-	cnx_fdb.Exec(`INSERT INTO cadprolic (NUMORC, lotelic, item, ITEM_MASK, ITEMORC, CADPRO, CODCCUSTO, quan1, VAMED1, VATOMED1, REDUZ, MICROEMPRESA, TLANCE, ITEM_AG, numlic, ID_CADORC)
-	SELECT
-		numorc,
-		lotelic,
-		item,
-		item item_mask,
-		item itemorc,
-		cadpro,
-		codccusto,
-		quan1,
-		vamed1,
-		vatomed1,
-		reduz,
-		microempresa,
-		tlance,
-		item item_ag,
-		numlic,
-		NULL id_cadorc
-	FROM
-		(
-		SELECT
-			rn.min_numorc AS numorc,
-			-- Usa o menor numorc para cada numlic
-			rn.lotelic,
-			ROW_NUMBER() OVER (PARTITION BY rn.numlic
-		ORDER BY
-			(
-			SELECT
-				a.disc1
-			FROM
-				cadest a
-			WHERE
-				a.cadpro = rn.cadpro)) item,
-			rn.cadpro,
-			rn.codccusto,
-			SUM(rn.qtd) AS quan1,
-			0 AS vamed1,
-			0 AS vatomed1,
-			rn.reduz,
-			rn.microempresa,
-			rn.tlance,
-			rn.numlic
-		FROM
-			(
-			SELECT
-				a.numorc,
-				MIN(a.numorc) OVER (PARTITION BY b.numlic) AS min_numorc,
-				-- Calcula o menor numorc para cada grupo de numlic
-			NULL AS lotelic,
-				a.cadpro,
-				a.CODCCUSTO,
-				a.qtd,
-				'N' AS reduz,
-				'N' AS microempresa,
-				'$' AS tlance,
-				b.numlic,
-				COUNT(DISTINCT a.numorc) OVER (PARTITION BY b.numlic) AS numorc_count
-			FROM
-				ICADORC a
-			JOIN CADORC b ON
-				a.ID_CADORC = b.ID_CADORC
-			WHERE
-				b.NUMLIC IS NOT NULL
-				AND b.FLG_COTACAO = 'N'
-	) AS rn
-		WHERE
-			rn.numorc_count > 1
-			-- Filtra apenas os registros onde há diferentes numorc para o mesmo numlic
-		GROUP BY
-			rn.numlic,
-			rn.min_numorc,
-			-- Inclui min_numorc no GROUP BY para agrupamento correto
-			rn.lotelic,
-			rn.cadpro,
-			rn.codccusto,
-			rn.reduz,
-			rn.microempresa,
-			rn.tlance)
-	UNION ALL
-	SELECT
-		a.numorc,
-		NULL AS lotelic,
-		a.item,
-		a.item AS item_mask,
-		a.ITEMORC,
-		a.cadpro,
-		a.CODCCUSTO,
-		a.qtd,
-		a.valor AS vamed1,
-		a.valor AS vatomed1,
-		'N' AS reduz,
-		'N' AS microempresa,
-		'$' AS tlance,
-		a.item AS item_ag,
-		b.numlic,
-		a.ID_CADORC
-	FROM
-		ICADORC a
-	JOIN CADORC b ON
-		a.ID_CADORC = b.ID_CADORC
-	WHERE
-		b.NUMLIC IS NOT NULL
-		AND b.FLG_COTACAO = 'N'
-		AND b.numlic IN (
-		SELECT
-			numlic
-		FROM
-			ICADORC i
-		JOIN CADORC c ON
-			i.ID_CADORC = c.ID_CADORC
-		WHERE
-			c.NUMLIC IS NOT NULL
-			AND c.FLG_COTACAO = 'N'
-		GROUP BY
-			c.numlic
-		HAVING
-			COUNT(DISTINCT i.numorc) = 1) -- Apenas numlic vinculadas a uma única numorc);`)
+	// cnx_fdb.Exec(`INSERT INTO cadprolic (NUMORC, lotelic, item, ITEM_MASK, ITEMORC, CADPRO, CODCCUSTO, quan1, VAMED1, VATOMED1, REDUZ, MICROEMPRESA, TLANCE, ITEM_AG, numlic, ID_CADORC)
+	// SELECT
+	// 	numorc,
+	// 	lotelic,
+	// 	item,
+	// 	item item_mask,
+	// 	item itemorc,
+	// 	cadpro,
+	// 	codccusto,
+	// 	quan1,
+	// 	vamed1,
+	// 	vatomed1,
+	// 	reduz,
+	// 	microempresa,
+	// 	tlance,
+	// 	item item_ag,
+	// 	numlic,
+	// 	NULL id_cadorc
+	// FROM
+	// 	(
+	// 	SELECT
+	// 		rn.min_numorc AS numorc,
+	// 		-- Usa o menor numorc para cada numlic
+	// 		rn.lotelic,
+	// 		ROW_NUMBER() OVER (PARTITION BY rn.numlic
+	// 	ORDER BY
+	// 		(
+	// 		SELECT
+	// 			a.disc1
+	// 		FROM
+	// 			cadest a
+	// 		WHERE
+	// 			a.cadpro = rn.cadpro)) item,
+	// 		rn.cadpro,
+	// 		rn.codccusto,
+	// 		SUM(rn.qtd) AS quan1,
+	// 		0 AS vamed1,
+	// 		0 AS vatomed1,
+	// 		rn.reduz,
+	// 		rn.microempresa,
+	// 		rn.tlance,
+	// 		rn.numlic
+	// 	FROM
+	// 		(
+	// 		SELECT
+	// 			a.numorc,
+	// 			MIN(a.numorc) OVER (PARTITION BY b.numlic) AS min_numorc,
+	// 			-- Calcula o menor numorc para cada grupo de numlic
+	// 		NULL AS lotelic,
+	// 			a.cadpro,
+	// 			a.CODCCUSTO,
+	// 			a.qtd,
+	// 			'N' AS reduz,
+	// 			'N' AS microempresa,
+	// 			'$' AS tlance,
+	// 			b.numlic,
+	// 			COUNT(DISTINCT a.numorc) OVER (PARTITION BY b.numlic) AS numorc_count
+	// 		FROM
+	// 			ICADORC a
+	// 		JOIN CADORC b ON
+	// 			a.ID_CADORC = b.ID_CADORC
+	// 		WHERE
+	// 			b.NUMLIC IS NOT NULL
+	// 			AND b.FLG_COTACAO = 'N'
+	// ) AS rn
+	// 	WHERE
+	// 		rn.numorc_count > 1
+	// 		-- Filtra apenas os registros onde há diferentes numorc para o mesmo numlic
+	// 	GROUP BY
+	// 		rn.numlic,
+	// 		rn.min_numorc,
+	// 		-- Inclui min_numorc no GROUP BY para agrupamento correto
+	// 		rn.lotelic,
+	// 		rn.cadpro,
+	// 		rn.codccusto,
+	// 		rn.reduz,
+	// 		rn.microempresa,
+	// 		rn.tlance)
+	// UNION ALL
+	// SELECT
+	// 	a.numorc,
+	// 	NULL AS lotelic,
+	// 	a.item,
+	// 	a.item AS item_mask,
+	// 	a.ITEMORC,
+	// 	a.cadpro,
+	// 	a.CODCCUSTO,
+	// 	a.qtd,
+	// 	a.valor AS vamed1,
+	// 	a.valor AS vatomed1,
+	// 	'N' AS reduz,
+	// 	'N' AS microempresa,
+	// 	'$' AS tlance,
+	// 	a.item AS item_ag,
+	// 	b.numlic,
+	// 	a.ID_CADORC
+	// FROM
+	// 	ICADORC a
+	// JOIN CADORC b ON
+	// 	a.ID_CADORC = b.ID_CADORC
+	// WHERE
+	// 	b.NUMLIC IS NOT NULL
+	// 	AND b.FLG_COTACAO = 'N'
+	// 	AND b.numlic IN (
+	// 	SELECT
+	// 		numlic
+	// 	FROM
+	// 		ICADORC i
+	// 	JOIN CADORC c ON
+	// 		i.ID_CADORC = c.ID_CADORC
+	// 	WHERE
+	// 		c.NUMLIC IS NOT NULL
+	// 		AND c.FLG_COTACAO = 'N'
+	// 	GROUP BY
+	// 		c.numlic
+	// 	HAVING
+	// 		COUNT(DISTINCT i.numorc) = 1) -- Apenas numlic vinculadas a uma única numorc);`)
 	fmt.Println("Cadprolic - Tempo de execução: ", time.Since(start))
 }
 
@@ -569,7 +570,7 @@ func ProlicProlics() {
 									c.forprocessoid = a.habilitacaolicforprocessoid
 									and a.habilitacaolicforprocessoversao = c.forprocessoversao
 								where
-									c.forprocessougid = $1`, GetEmpresa())
+									c.forprocessougid = $1 --and c.forprocessoid = 22026`, GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -635,26 +636,59 @@ func CadproProposta() {
 	cnx_fdb.Exec("DELETE FROM CADPRO_PROPOSTA")
 
 	// Query
-	rows, err := cnx_pg.Query(`select
-									a.itemcomprapropfornecedorid codif,
-									1 sessao,
-									c.pedidocompraforprocessoid,
-									to_char(d.loteordem, 'fm00000000') lote,
-									b.itemcompranumitemseq item,
-									b.itemcompraquantidade,
-									a.itemcomprapropvalorunitario,
-									a.itemcomprapropvalortotal,
-									'C' status,
-									1 subem
-								from
-									itemcompraproposta a
-								join itemcompra b on
-									a.itemcompraid = b.itemcompraid
-									and a.itemcompraversao = b.itemcompraversao
-								join pedidocompra c on c.pedidocompraid = b.itemcomprapedidoid and c.pedidocompraversao = b.itemcomprapedidoversao 
-								left join lote d on b.itemcompraloteid = d.loteid 
-								where
-									c.pedidocompraugid = $1 and c.pedidocompracotacaoid is not null --and c.pedidocompraforprocessoid = 29715`, GetEmpresa())
+	rows, err := cnx_pg.Query(`SELECT
+								codif,
+								sessao,
+								numlic,
+								lote,
+								item,
+								itemorc,
+								SUM(qtd) AS qtd,  -- Agregação por soma
+								itemcomprapropvalorunitario,
+								SUM(total) AS total,
+								status,
+								subem
+							FROM
+								(
+									SELECT DISTINCT
+										a.itemcomprapropfornecedorid AS codif,
+										1 AS sessao,
+										c.pedidocompraforprocessoid AS numlic,
+										TO_CHAR(d.loteordem, 'fm00000000') AS lote,
+										COALESCE(b.itemcompranumitemseq, b.itemcompraordem) AS item,
+										e.item AS itemorc,
+										b.itemcompraquantidade AS qtd,  -- Incluído no GROUP BY e SUM
+										a.itemcomprapropvalorunitario,
+										a.itemcomprapropvalortotal AS total,
+										'C' AS status,
+										1 AS subem
+									FROM
+										itemcompraproposta a
+									JOIN itemcompra b ON
+										a.itemcompraid = b.itemcompraid
+										AND a.itemcompraversao = b.itemcompraversao
+									JOIN pedidocompra c ON
+										c.pedidocompraid = b.itemcomprapedidoid
+										AND c.pedidocompraversao = b.itemcomprapedidoversao
+									LEFT JOIN lote d ON
+										b.itemcompraloteid = d.loteid
+									LEFT JOIN icadorc e ON
+										e.pedidocompraforprocessoid = c.pedidocompraforprocessoid
+										AND e.codreduz = b.itemcompramaterialid
+									WHERE
+										c.pedidocompraugid = $1
+										--AND c.pedidocompraforprocessoid = 4678
+								) AS subquery
+							GROUP BY
+								codif,
+								sessao,
+								numlic,
+								lote,
+								item,
+								itemorc,
+								itemcomprapropvalorunitario,
+								status,
+								subem;`, GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -668,15 +702,17 @@ func CadproProposta() {
 	var codif, sessao, numlic, itemp, subem int
 	var quan1, vaun1, vato1 nulls.Float64
 	var status, lotelic nulls.String
+	var item nulls.Int
 	for rows.Next() {
-		err = rows.Scan(&codif, &sessao, &numlic, &lotelic, &itemp, &quan1, &vaun1, &vato1, &status, &subem)
+		err = rows.Scan(&codif, &sessao, &numlic, &lotelic, &itemp, &item, &quan1, &vaun1, &vato1, &status, &subem)
 		if err != nil {
 			panic("Erro ao scannear variáveis: " + err.Error())
 		}
 
 		_, err = insert.Exec(codif, sessao, numlic, lotelic, itemp, itemp, quan1, vaun1, vato1, status, subem)
 		if err != nil {
-			panic("Erro ao inserir dados: " + err.Error())
+			// panic("Erro ao inserir dados: " + err.Error())
+			continue
 		}
 	}
 	fmt.Println("CadproProposta - Tempo de execução: ", time.Since(start))
@@ -893,4 +929,96 @@ func Regpreco() {
                         (select numlic from cadlic where registropreco='S' and liberacompra='S') and subem=1;
                         END;`)
 	fmt.Println("Regpreco - Tempo de execução: ", time.Since(start))
+}
+
+func Aditivo() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_pg, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_pg.Close()
+
+	// Limpando Tabela
+	cnx_fdb.Exec("update cadpro set qtdadt = quan1, vaunadt = vaun1, vatoadt = vato1")
+	cnx_fdb.Exec("update cadprolic_detalhe_fic set qtdadt = qtd, valoradt = valor")
+
+	// Query
+	rows, err := cnx_pg.Query(`select
+						aditivonumero,
+						aditivoid,
+						c.pedidocompraforprocessoid,
+						b.itemcompramaterialid,
+						b.itemcompraaditivoqtde,
+						b.itemcompraaditivovalorunitario,
+						b.itemcompraaditivovalorunitario * b.itemcompraaditivoqtde totaladt
+					from
+						aditivo a
+					join itemcompra b on
+						a.aditivoid = b.itemcompraaditivoid
+					join pedidocompra c on
+						c.pedidocompraid = b.itemcomprapedidoid
+						and c.pedidocompraversao = b.itemcomprapedidoversao
+					where
+						aditivougid = $1 
+						and pedidocompraforprocessoid IS NOT NULL
+						--and c.pedidocompraforprocessoid = 1452
+					order by pedidocompraforprocessoid, aditivonumero, aditivoano `, GetEmpresa())
+	if err != nil {
+		panic("Erro ao consultar dados: " + err.Error())
+	}
+
+	// Prepara o update
+	updtCadpro, err := cnx_fdb.Prepare(`UPDATE CADPRO SET QTDADT = QTDADT + ?, VAUNADT = ?, VATOADT = VATOADT + ? WHERE NUMLIC = ? AND CADPRO = ?`)
+	if err != nil {
+		panic("Erro ao preparar update: " + err.Error())
+	}
+	updtDetalheFic, err := cnx_fdb.Prepare(`UPDATE CADPROLIC_DETALHE_FIC SET QTDADT = QTDADT + ?, VALORADT = VALORADT + ? WHERE NUMLIC = ? AND ITEM = ?`)
+	if err != nil {
+		panic("Erro ao preparar update: " + err.Error())
+	}
+
+	// Consulta cadpro
+	cadpros := make(map[int]string)
+	aux1, err := cnx_fdb.Query(`select cadpro, codreduz from cadest`)
+	if err != nil {
+		panic("Erro ao consultar cadpro" + err.Error())
+	}
+	for aux1.Next() {
+		var cadpro string
+		var codreduz int
+		err = aux1.Scan(&cadpro, &codreduz)
+		if err != nil {
+			panic("Erro ao scannear cadpro" + err.Error())
+		}
+		cadpros[codreduz] = cadpro
+	}
+
+	// Executa o update
+	for rows.Next() {
+		var aditivonumero, aditivoid, numlic, codreduz int
+		var qtdadt, vaunadt, vatoadt float64
+		var item nulls.Int
+		err = rows.Scan(&aditivonumero, &aditivoid, &numlic, &codreduz, &qtdadt, &vaunadt, &vatoadt)
+		if err != nil {
+			panic("Erro ao scannear variáveis: " + err.Error())
+		}
+
+		cadpro := cadpros[codreduz]
+		cnx_fdb.QueryRow(`select item from cadprolic_detalhe where numlic = ? and cadpro = ?`, numlic, cadpro).Scan(&item)
+
+		if item.Valid {
+			updtCadpro.Exec(qtdadt, vaunadt, vatoadt, numlic, cadpro)
+			updtDetalheFic.Exec(qtdadt, vatoadt, numlic, item)
+		} else {
+			continue
+		}
+	}
+	fmt.Println("Aditivo - Tempo de execução: ", time.Since(start))
 }
