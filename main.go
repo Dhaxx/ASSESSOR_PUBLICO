@@ -2,7 +2,7 @@ package main
 
 import (
 	"ASSESSOR_PUBLICO/COMPRAS"
-	"sync"
+	// "sync"
 )
 
 func main() {
@@ -11,9 +11,9 @@ func main() {
     // var wg3 sync.WaitGroup
     // var wg4 sync.WaitGroup
     // var wg5 sync.WaitGroup
-    var wg6 sync.WaitGroup
-    var wg7 sync.WaitGroup
-	var wg8 sync.WaitGroup
+    // var wg6 sync.WaitGroup
+    // var wg7 sync.WaitGroup
+	// var wg8 sync.WaitGroup
     
 //////////////////////////
 	// wg1.Add(4)
@@ -111,16 +111,16 @@ func main() {
 	// }()
 	// wg7.Wait()
 
-	compras.Regpreco()
-	wg8.Add(2)
-	go func() {
-		defer wg8.Done()
-		compras.Aditivo()
-	}()
-	go func() {
-		defer wg8.Done()
-		compras.Cadped()
-	}()
+	// compras.Regpreco()
+	// wg8.Add(2)
+	// go func() {
+	// 	defer wg8.Done()
+	// 	compras.Aditivo()
+	// }()
+	// go func() {
+	// 	defer wg8.Done()
+	// 	compras.Cadped()
+	// }()
 
-	compras.Icadped()
+	// compras.Icadped()
 }
