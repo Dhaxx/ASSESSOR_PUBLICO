@@ -134,7 +134,7 @@ func Cadorc() {
 		}
 	}
 
-	fmt.Println("solicitacoes - Tempo de execução: ", time.Since(start))
+	fmt.Println("Cadorc - Tempo de execução: ", time.Since(start))
 }
 
 func Icadorc() {

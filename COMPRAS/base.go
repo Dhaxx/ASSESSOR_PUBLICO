@@ -4,10 +4,13 @@ import (
 	"ASSESSOR_PUBLICO/CONEXAO"
 	"time"
 	"fmt"
+
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
-func Cadunimedida() {
-	start := time.Now()
+func Cadunimedida(p *mpb.Progress) {
+	// start := time.Now()
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
@@ -42,9 +45,30 @@ func Cadunimedida() {
 		panic("Falha ao executar select: " + err.Error())
 	}
 
+	// Conta registros
+	var count int
+	err = cnx_pg.QueryRow(`SELECT COUNT(*) FROM (select
+									trim(substring(unidademedidadescricao,1,30)) descricao,
+									trim(substring(unidademedidasigla,1,5)) sigla,
+									unidademedidaid
+								from
+									unidademedida) as rn`).Scan(&count)
+	if err != nil {
+		panic("Falha ao contar registros: " + err.Error())
+	}
+	
 	// Itera sobre o resultado
 	var sigla, descricao string
 	var id_ant int
+	bar1 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("CADUNIMEDIDA: "),
+			decor.Percentage(),
+		),
+		mpb.AppendDecorators(
+			decor.CountersKibiByte("% .2f / % .2f"),
+		),
+	)
 
 	for rows.Next() {
 		err = rows.Scan(&descricao, &sigla, &id_ant)
@@ -56,12 +80,13 @@ func Cadunimedida() {
 		if err != nil {
 			panic("Falha ao inserir dados: " + err.Error())
 		}
+		bar1.Increment()
 	}
-	fmt.Println("Cadunimedida - Tempo de execução: ", time.Since(start))
+	// fmt.Println("Cadunimedida - Tempo de execução: ", time.Since(start))
 }
 
-func GrupoSubgrupo() {
-	start := time.Now()
+func GrupoSubgrupo(p *mpb.Progress) {
+	// start := time.Now()
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
@@ -76,6 +101,7 @@ func GrupoSubgrupo() {
 	defer cnx_pg.Close()
 
 	// Limpa tabela
+	cnx_fdb.Exec("DELETE FROM CADEST")
 	cnx_fdb.Exec("DELETE FROM CADSUBGR")  
 	cnx_fdb.Exec("DELETE FROM CADGRUPO")  
 
@@ -110,6 +136,32 @@ func GrupoSubgrupo() {
 		panic("Falha ao executar select: " + err.Error())
 	}
 
+	// Conta registros
+	var count int
+	err = cnx_pg.QueryRow(`SELECT COUNT(*) FROM (select
+									'0'||substring(hierarquiaconcatniveis, 1, 2) grupo,
+									'0'||substring(hierarquiaconcatniveis, 4, 2) subgrupo,
+									hierarquianivel,
+									substring(hierarquiadesc, 1, 45) nome,
+									case when hierarquiasituacao = 'A' then 'N' else 'S' end ocultar,
+									hierarquiagrupoid,
+									coalesce(hierarquiasubgrupoid,0) subgrupoid
+								from
+									hierarquia h 
+								order by hierarquianivel) as rn`).Scan(&count)
+	if err != nil {
+		panic("Falha ao contar registros: " + err.Error())
+	}
+	bar2 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("GRUPO/SUBGRUPO: "),
+			decor.Percentage(),
+		),
+		mpb.AppendDecorators(
+			decor.CountersKibiByte("% .2f / % .2f"),
+		),
+	)
+
 	// Itera sobre o resultado
 	var grupo, subgrupo, nome, ocultar string
 	var nivel, grupo_ant, subgrupo_ant int
@@ -130,11 +182,12 @@ func GrupoSubgrupo() {
 				panic("Falha ao inserir dados: " + err.Error())
 			}
 		}
+		bar2.Increment()
 	}
-	fmt.Println("GrupoSubgrupo - Tempo de execução: ", time.Since(start))
+	// fmt.Println("GrupoSubgrupo - Tempo de execução: ", time.Since(start))
 }
 
-func Cadest() {
+func Cadest(p *mpb.Progress) {
 	start := time.Now()
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
@@ -224,8 +277,8 @@ func Cadest() {
 	fmt.Println("Cadest - Tempo de execução: ", time.Since(start))
 }
 
-func Destino() {
-	start := time.Now()
+func Destino(p *mpb.Progress) {
+	// start := time.Now()
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
@@ -258,6 +311,26 @@ func Destino() {
 		panic("Falha ao executar select: " + err.Error())
 	}
 
+	// Conta registros
+	var count int
+	err = cnx_pg.QueryRow(`SELECT COUNT(*) FROM (select
+									to_char(almoxarifadoid, 'fm000000000') cod,
+									almoxarifadodescricao
+								from
+									almoxarifado a) as rn`).Scan(&count)
+	if err != nil {
+		panic("Falha ao contar registros: " + err.Error())
+	}
+	bar3 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("DESTINO: "),
+			decor.Percentage(),
+		),
+		mpb.AppendDecorators(
+			decor.CountersKibiByte("% .2f / % .2f"),
+		),
+	)
+
 	// Itera sobre o resultado
 	var cod, desti string
 	var empresa int
@@ -273,16 +346,17 @@ func Destino() {
 		if err != nil {
 			panic("Falha ao inserir dados: " + err.Error())
 		}
+		bar3.Increment()
 	}
-	fmt.Println("Destino - Tempo de execução: ", time.Since(start))
+	// fmt.Println("Destino - Tempo de execução: ", time.Since(start))
 }
 
 func CentroCusto() {
-	start := time.Now()
+	// start := time.Now()
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
-		panic("Falha ao conectar com o banco de destino: " + err.Error())
+		panic("Failed to count rows: " + err.Error())
 	}
 	defer cnx_fdb.Close()
 
@@ -355,6 +429,7 @@ func CentroCusto() {
 		if err != nil {
 			panic("Falha ao inserir dados: " + err.Error())
 		}
+		bar4.Increment()
 	}
 	cnx_fdb.Exec(`INSERT
 						INTO
@@ -386,5 +461,5 @@ func CentroCusto() {
 						NULL,
 						NULL
 					FROM CENTROCUSTO `)
-	fmt.Println("CentroCusto - Tempo de execução: ", time.Since(start))
+	// fmt.Println("CentroCusto - Tempo de execução: ", time.Since(start))
 }
