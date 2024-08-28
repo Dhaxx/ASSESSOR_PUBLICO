@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gobuffalo/nulls"
+	"github.com/schollz/progressbar/v3"
 )
 
 func Cadorc() {
@@ -51,7 +52,8 @@ func Cadorc() {
 										solicitante,
 										numorc_ant,
 										flg_cotacao,
-										id_ant) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+										id_ant,
+										numlic) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic("Falha ao preparar insert: " + err.Error())
 	}
@@ -67,21 +69,22 @@ func Cadorc() {
 			substring(pedidocomprajustificativa, 1, 1024) descr,
 			'NORMAL' prioridade,
 			'Nº Solicitação: '||to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 || coalesce(' - ' || pedidocompraobservacao,'') obs,
-			case when pedidocomprasituacao = 2 then 'AB' when pedidocomprasituacao = 3 then 'AP' else 'CA' end status,
-			'S' liberado,
+			case when pedidocompraforprocessoid is not null then 'EC' when pedidocomprasituacao = 2 then 'AB' when pedidocomprasituacao = 3 then 'AP' else 'CA' end status,
+			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
 			coalesce(a.pedidocompraunidorcid,0) codccusto,
 			'L' liberado_tela,
 			c.pessoanome,
 			to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 numorc_ant,
 			'N' flg_cotacao,
-			a.pedidocompraid id_ant
+			a.pedidocompraid id_ant,
+			pedidocompraforprocessoid numlic
 		from
 			pedidocompra a
 		left join cotacaoprecos b on
 			a.pedidocompracotacaoid = b.cotacaoprecosid and a.pedidocompracotacaoversao = b.cotacaoprecosversao 
 		left join pessoa c on
 			a.pedidocomprasolicitanteid = c.pessoaid
-		where a.pedidocompraugid = 2 and b.cotacaoprecosnumero is null
+		where a.pedidocompraugid = $1 and b.cotacaoprecosnumero is null
 		union all
 		--Cotações
 		select
@@ -94,39 +97,39 @@ func Cadorc() {
 			'NORMAL' prioridade,
 			'Nº Solicitação: '||to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 || coalesce(' - ' || pedidocompraobservacao,'') obs,
 			case when cotacaoprecossituacao = 1 then 'CO' when pedidocomprasituacao = 2 then 'EC' else 'CA' end status,
-			'S' liberado,
+			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
 			coalesce(a.pedidocompraunidorcid,0) codccusto,
 			'L' liberado_tela,
 			c.pessoanome,
 			to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 numorc_ant,
 			'S',
-			cotacaoprecosid
+			cotacaoprecosid,
+			null --pedidocompraforprocessoid numlic
 		from
 			pedidocompra a
 		join cotacaoprecos b on
 			a.pedidocompracotacaoid = b.cotacaoprecosid and a.pedidocompracotacaoversao = b.cotacaoprecosversao 
 		left join pessoa c on
 			a.pedidocomprasolicitanteid = c.pessoaid
-		where a.pedidocompraugid = 2
-		order by data desc
-	`) // GetEmpresa()
+		where a.pedidocompraugid = $2
+		order by data desc`, GetEmpresa(), GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar pedidos de compra: " + err.Error())
 	}
 
-	var id_cadorc, codccusto, id_ant nulls.Int
+	var id_cadorc, codccusto, id_ant, numlic nulls.Int
 	var num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, liberado_tela, solicitante, numorc_ant, flg_cotacao nulls.String
 	empresa := nulls.NewInt(GetEmpresa())
 
 	for rows.Next() {
-		err = rows.Scan(&id_cadorc, &num, &ano, &numorc, &dtorc, &descr, &prioridade, &obs, &status, &liberado, &codccusto, &liberado_tela, &solicitante, &numorc_ant, &flg_cotacao, &id_ant)
+		err = rows.Scan(&id_cadorc, &num, &ano, &numorc, &dtorc, &descr, &prioridade, &obs, &status, &liberado, &codccusto, &liberado_tela, &solicitante, &numorc_ant, &flg_cotacao, &id_ant, &numlic)
 		if err != nil {
 			panic("Falha ao ler pedidos de compra: " + err.Error())
 		}
 
-		_, err = insert.Exec(id_cadorc, num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, codccusto, liberado_tela, empresa, solicitante, numorc_ant, flg_cotacao, id_ant)
+		_, err = insert.Exec(id_cadorc, num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, codccusto, liberado_tela, empresa, solicitante, numorc_ant, flg_cotacao, id_ant, numlic)
 		if err != nil {
-			fmt.Println("Falha ao Inserir Registro na Cadorc: ", err)
+			// fmt.Println("Falha ao Inserir Registro na Cadorc: ", err)
 			continue
 		}
 	}
@@ -181,7 +184,7 @@ func Icadorc() {
 	var numorc, flg_cotacao, id_cadorc string
 	var id_ant int
 	var qtd, valor nulls.Float64
-	var item, itemorc, codccusto nulls.Int
+	var item, codccusto nulls.Int
 
 	rows, err := cnx_pg.Query(`select distinct 
 									--loteordem,
@@ -229,6 +232,51 @@ func Icadorc() {
 		panic("Falha ao buscar itens de pedido de compra: " + err.Error())
 	}
 
+	// Conta Registros
+	var count int
+	cnx_pg.QueryRow(`select count(*) from (select distinct 
+									--loteordem,
+									coalesce(d.estimativaitemid,b.itemcompraordem) item,
+									b.itemcompramaterialid AS codreduz,
+									SUM(b.itemcompraquantidade) AS total_quantidade, -- Soma as quantidades
+									0 AS valor,
+									coalesce(a.pedidocompraunidorcid,0) codccusto,
+									CASE 
+										WHEN pedidocompracotacaoid IS NULL THEN 'N' 
+										ELSE 'S' 
+									END AS flg_cotacao,
+									COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) AS id_ant
+								FROM
+									pedidocompra a
+								JOIN itemcompra b ON
+									a.pedidocompraid = b.itemcomprapedidoid
+									AND a.pedidocompraversao = b.itemcompraversao
+								LEFT JOIN estimativa c ON c.estimativacotacaoid = a.pedidocompracotacaoid
+									AND c.estimativacotacaoversao = a.pedidocompracotacaoversao 
+								LEFT JOIN estimativaitem d ON d.estimativaid = c.estimativaid and d.estimativaitemmaterialid = b.itemcompramaterialid
+								LEFT JOIN lote e ON e.loteid = d.estimativaitemloteid
+									AND e.loteversao = d.estimativaitemloteversao 
+								LEFT JOIN cotacaoprecos f ON f.cotacaoprecosid = a.pedidocompracotacaoid
+									AND f.cotacaoprecosversao = a.pedidocompracotacaoversao 
+								WHERE
+									a.pedidocompraugid = 2 
+									AND itemcompraorigem = 1 
+									and itemcompramaterialid is not null
+									--AND COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) = 2
+								GROUP by
+									loteordem,
+									itemcompraordem,
+									estimativaitemid,
+									itemcompramaterialid,
+									coalesce(a.pedidocompraunidorcid,0),
+									CASE 
+										WHEN pedidocompracotacaoid IS NULL THEN 'N' 
+										ELSE 'S' 
+									END,
+									COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
+									pedidocompracotacaoid
+								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)) as rn`).Scan(&count)
+
 	// Consulta Auxiliar
 	aux2, err := cnx_fdb.Query("select numorc, id_cadorc, flg_cotacao, id_ant from cadorc")
 	if err != nil {
@@ -248,6 +296,7 @@ func Icadorc() {
 		numorcs[flg_cotacao][id_ant] = []string{numorc, id_cadorc}
 	}
 
+	bar := progressbar.Default(int64(count))
 	for rows.Next() {
 		err = rows.Scan(&item, &codreduz, &qtd, &valor, &codccusto, &flg_cotacao, &id_ant)
 		if err != nil {
@@ -258,14 +307,14 @@ func Icadorc() {
 		numorc = numorcs[flg_cotacao][id_ant][0]
 		id_cadorc = numorcs[flg_cotacao][id_ant][1]
 
-		_, err = insert.Exec(numorc, item, cadpro, qtd, valor, itemorc, codccusto, item, id_cadorc)
+		_, err = insert.Exec(numorc, item, cadpro, qtd, valor, item, codccusto, item, id_cadorc)
 		if err != nil {
-			fmt.Println("Falha ao inserir itens de pedido de compra: ", err)
 			continue
 		}
+		bar.Add(1)
 	}
-	cnx_fdb.Exec("UPDATE ICADORC SET ITEMORC = ITEM")
-	fmt.Println("itens - Tempo de execução: ", time.Since(start))
+	// cnx_fdb.Exec("UPDATE ICADORC SET ITEMORC = ITEM")
+	fmt.Println("Icadorc - Tempo de execução: ", time.Since(start))
 }
 
 func Fcadorc() {
@@ -377,7 +426,7 @@ func Fcadorc() {
 			panic("Falha ao inserir fornecedores: " + err.Error())
 		}
 	}
-	fmt.Println("fcadorc - Tempo de execução: ", time.Since(start))
+	fmt.Println("Fcadorc - Tempo de execução: ", time.Since(start))
 }
 
 func Vcadorc() {
@@ -521,5 +570,5 @@ func Vcadorc() {
 						END
 					END`)
 
-	fmt.Println("fornecedores - Tempo de execução: ", time.Since(start))
+	fmt.Println("Vcadorc - Tempo de execução: ", time.Since(start))
 }

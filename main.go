@@ -6,42 +6,121 @@ import (
 )
 
 func main() {
-	var wg sync.WaitGroup
-    wg.Add(4)
+	// var wg1 sync.WaitGroup
+    // var wg2 sync.WaitGroup
+    // var wg3 sync.WaitGroup
+    // var wg4 sync.WaitGroup
+    // var wg5 sync.WaitGroup
+    var wg6 sync.WaitGroup
+    var wg7 sync.WaitGroup
+	var wg8 sync.WaitGroup
+    
+//////////////////////////
+	// wg1.Add(4)
+    // go func() {
+    //     defer wg1.Done()
+    //     compras.Cadunimedida()
+    // }()
+    // go func() {
+    //     defer wg1.Done()
+    //     compras.GrupoSubgrupo()
+    // }()
+    // go func() {
+    //     defer wg1.Done()
+    //     compras.Destino()
+    // }()
+    // go func() {
+    //     defer wg1.Done()
+    //     compras.CentroCusto()
+    // }()
+	// wg1.Wait()
 
-    go func() {
-        defer wg.Done()
-        compras.Cadunimedida()
-    }()
+	// // Cotação
+	// wg2.Add(2)
+	// go func() {
+	// 	defer wg2.Done()
+	// 	compras.Cadest()
+	// }()
+	// go func() {
+	// 	defer wg2.Done()
+	// 	compras.Cadorc()
 
-    go func() {
-        defer wg.Done()
-        compras.GrupoSubgrupo()
-    }()
+	// }()
+	// wg2.Wait()
 
-    go func() {
-        defer wg.Done()
-        compras.Destino()
-    }()
+	// wg3.Add(2)
+	// go func() {
+	// 	defer wg3.Done()
+	// 	compras.Icadorc()
+	// }()
+	// go func() {
+	// 	defer wg3.Done()
+	// 	compras.Fcadorc()
+	// }()
+	// wg3.Wait()
 
-    go func() {
-        defer wg.Done()
-        compras.CentroCusto()
-    }()
-	
-	wg.Wait()
+	// wg4.Add(2)
+	// go func() {
+	// 	defer wg4.Done()
+	// 	compras.Vcadorc()
+	// }()
+	// go func() {
+	// 	defer wg4.Done()
+	// 	compras.Cadlic()	
+	// }()
+	// wg4.Wait()
+
+	// compras.Cadprolic()
+
+	// wg5.Add(2)
+	// go func() {
+	// 	defer wg5.Done()
+	// 	compras.CadprolicDetalhe()
+	// }()
+	// go func() {
+	// 	defer wg5.Done()
+	// 	compras.ProlicProlics()
+	// }()
+	// wg5.Wait()
+
+	compras.CadproProposta()
+
+	// wg6.Add(3)
+	// go func() {
+	// 	defer wg6.Done()
+	// 	compras.CadlicSessao()
+	// }()
+	// go func() {
+	// 	defer wg6.Done()
+	//	compras.CadproStatus()
+	// }()
+	// go func() {
+	// 	defer wg6.Done()
+	// 	compras.CadproLance()
+	// }()
+	// wg6.Wait()
+
+	// wg7.Add(2)
+	// go func() {
+	// 	defer wg7.Done()
+	// 	compras.CadproFinal()
+	// }()
+	// go func() {
+	// 	defer wg7.Done()
+	// 	compras.Cadpro()
+	// }()
+	// wg7.Wait()
+
+	compras.Regpreco()
+	wg8.Add(2)
 	go func() {
-		compras.Cadest()
+		defer wg8.Done()
+		compras.Aditivo()
+	}()
+	go func() {
+		defer wg8.Done()
+		compras.Cadped()
 	}()
 
-	compras.Cadorc()
-	compras.Icadorc()
-	compras.Fcadorc()
-	compras.Vcadorc()
-
-	compras.Cadlic()	
-	compras.Cadprolic()
-	compras.CadprolicDetalhe()
-	compras.ProlicProlics()
-	compras.CadproProposta()
+	compras.Icadped()
 }

@@ -397,7 +397,7 @@ func Cadprolic() {
 
 		_, err = insert.Exec(numorc, lote, item, item, itemorc, cadpro, codccusto, quan1, vamed1, vatomed1, reduz, microempresa, tlance, item, numlic, id_cadorc, item, item_por_lote)
 		if err != nil {
-			panic("Erro ao inserir dados: " + err.Error())
+			continue
 		}
 	}
 	fmt.Println("Cadprolic - Tempo de execução: ", time.Since(start))
@@ -564,4 +564,344 @@ func CadproProposta() {
 		}
 	}
 	fmt.Println("CadproProposta - Tempo de execução: ", time.Since(start))
+}
+
+func CadlicSessao() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+
+	cnx_fdb.Exec(`delete from cadlic_sessao`)
+	cnx_fdb.Exec(`INSERT INTO CADLIC_SESSAO (NUMLIC, SESSAO, DTREAL, HORREAL, COMP, DTENC, HORENC, SESSAOPARA, MOTIVO) 
+                  SELECT L.NUMLIC, CAST(1 AS INTEGER), L.DTREAL, L.HORREAL, L.COMP, L.DTENC, L.HORENC, CAST('T' AS VARCHAR(1)), CAST('O' AS VARCHAR(1)) FROM CADLIC L 
+                  WHERE numlic not in (SELECT FIRST 1 S.NUMLIC FROM CADLIC_SESSAO S WHERE S.NUMLIC = L.NUMLIC)`)
+	fmt.Println("CadlicSessao - Tempo de execução: ", time.Since(start))
+}
+
+func CadproStatus() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+
+	cnx_fdb.Exec(`delete from cadpro_status`)
+	cnx_fdb.Exec(`alter trigger TBI_CADPRO_STATUS_BLOQUEIO inactive`)
+	cnx_fdb.Exec(`MERGE INTO CADPRO_STATUS A
+					USING (SELECT cd.NUMLIC, 1 AS sessao, cp.item itemp, cp.item, 'I_ENCERRAMENTO' telafinal FROM CADPROLIC cp JOIN cadlic cd ON cp.NUMLIC = cd.NUMLIC WHERE cd.comp = 3) B
+					ON A.NUMLIC = B.NUMLIC AND A.ITEM = B.ITEM
+					WHEN NOT MATCHED THEN 	
+						INSERT (numlic, sessao, itemp, item, telafinal) VALUES (B.numlic, B.sessao, B.itemp, B.item, B.telafinal)`)
+	cnx_fdb.Exec(`alter trigger TBI_CADPRO_STATUS_BLOQUEIO active`)
+	fmt.Println("CadproStatus - Tempo de execução: ", time.Since(start))
+}
+
+func CadproLance() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+
+	cnx_fdb.Exec(`delete from cadpro_lance`)
+	cnx_fdb.Exec(`insert into cadpro_lance (sessao, rodada, codif, itemp, vaunl, vatol, status, subem, numlic)
+					SELECT sessao, 1 rodada, CODIF, ITEMP, VAUN1, VATO1, 'F' status, SUBEM, numlic FROM CADPRO_PROPOSTA cp where subem = 1 and not exists
+					(select 1 from cadpro_lance cl where cp.codif = cl.codif and cl.itemp = cp.itemp and cl.numlic = cp.numlic)`)
+
+	fmt.Println("CadproLance - Tempo de execução: ", time.Since(start))
+}
+
+func CadproFinal() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+
+	cnx_fdb.Exec(`delete from cadpro_final`)
+	cnx_fdb.Exec("alter table cadpro_final add CQTDADT double precision")
+    cnx_fdb.Exec("alter table cadpro_final add ccadpro varchar(20)")
+    cnx_fdb.Exec("alter table cadpro_final add CCODCCUSTO integer;")
+	cnx_fdb.Exec(`EXECUTE BLOCK
+                        AS
+                        BEGIN	                          
+                            INSERT INTO CADPRO_FINAL (NUMLIC, ULT_SESSAO, CODIF, ITEMP, VAUNF, VATOF, STATUS, SUBEM, PERCF) 
+                                                SELECT A.NUMLIC, A.SESSAO, A.CODIF, A.ITEMP, A.VAUN1, A.VATO1, 'C', 1, NULL  
+                                                FROM CADPRO_PROPOSTA A 
+                                                WHERE NOT EXISTS(SELECT 1 FROM CADPRO_FINAL B WHERE A.NUMLIC = B.NUMLIC AND A.SESSAO = B.ULT_SESSAO AND A.ITEMP = B.ITEMP) 
+                                                AND A.STATUS = 'C' AND A.SUBEM = 1 AND A.NUMLIC IN (SELECT NUMLIC FROM CADLIC);
+							
+							MERGE INTO cadpro_final f
+							using(
+								SELECT quan1,cadpro,codccusto,numlic,item FROM cadprolic
+							) a ON a.numlic = f.numlic AND a.item = f.itemp
+							WHEN MATCHED THEN UPDATE SET f.CQTDADT = a.quan1, f.ccadpro = a.cadpro, f.ccodccusto = a.codccusto;
+                        END`)
+	fmt.Println("CadproFinal - Tempo de execução: ", time.Since(start))
+}
+
+func Cadpro() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+
+	cnx_fdb.Exec(`delete from cadpro`)
+	cnx_fdb.Exec(`INSERT INTO CADPRO (
+					CODIF,
+					CADPRO,
+					QUAN1,
+					VAUN1,
+					VATO1,
+					SUBEM,
+					STATUS,
+					ITEM,
+					NUMORC,
+					ITEMORCPED,
+					CODCCUSTO,
+					FICHA,
+					ELEMENTO,
+					DESDOBRO,
+					NUMLIC,
+					ULT_SESSAO,
+					ITEMP,
+					QTDADT,
+					QTDPED,
+					VAUNADT,
+					VATOADT,
+					PERC,
+					QTDSOL,
+					ID_CADORC,
+					VATOPED,
+					VATOSOL,
+					TPCONTROLE_SALDO,
+					QTDPED_FORNECEDOR_ANT,
+					VATOPED_FORNECEDOR_ANT
+				)
+				SELECT
+					a.CODIF,
+					c.CADPRO,
+					CASE WHEN a.VAUNL <> 0 THEN ROUND((a.vatol / a.VAUNL), 2) ELSE 0 END qtdunit,
+					a.VAUNL,
+					CASE WHEN a.VAUNL <> 0 THEN ROUND((a.vatol / a.VAUNL), 2) * a.VAUNL ELSE 0 END VATOTAL,
+					1,
+					'C',
+					c.ITEM,
+					c.NUMORC,
+					c.ITEM,
+					c.CODCCUSTO,
+					c.FICHA,
+					c.ELEMENTO,
+					c.DESDOBRO,
+					a.NUMLIC,
+					1,
+					b.ITEMP,
+					CASE WHEN a.VAUNL <> 0 THEN ROUND((a.vatol / a.VAUNL), 2) ELSE 0 END qtdunit_adit,
+					0,
+					a.VAUNL,
+					CASE WHEN a.VAUNL <> 0 THEN ROUND((a.vatol / a.VAUNL), 2) * a.VAUNL ELSE 0 END VATOTAL,
+					0,
+					0,
+					c.ID_CADORC,
+					0,
+					0,
+					'Q',
+					0,
+					0
+				FROM
+					CADPRO_LANCE a
+				INNER JOIN CADPRO_STATUS b ON
+					b.NUMLIC = a.NUMLIC AND a.ITEMP = b.ITEMP AND a.SESSAO = b.SESSAO
+				INNER JOIN CADPROLIC_DETALHE c ON
+					c.NUMLIC = a.NUMLIC AND b.ITEM = c.ITEM_CADPROLIC
+				INNER JOIN CADLIC D ON
+					D.NUMLIC = A.NUMLIC
+				WHERE
+					a.SUBEM = 1 AND a.STATUS = 'F'
+					AND NOT EXISTS (
+						SELECT 1 
+						FROM CADPRO cp
+						WHERE cp.NUMLIC = a.NUMLIC 
+						AND cp.ITEM = c.ITEM 
+						AND cp.CODIF = a.CODIF
+					);`)
+	cnx_fdb.Exec(`MERGE INTO cadprolic_detalhe_fic AS target
+		USING (
+			SELECT 
+				c.numlic,
+				c.item,
+				'0' AS codigo,
+				c.quan1 AS qtd,
+				c.vato1 AS valor,
+				c.qtdadt,
+				c.vatoadt,
+				c.codccusto,
+				c.quan1 AS qtdmed,
+				c.vato1 AS valormed,
+				'C' AS tipo
+			FROM cadpro c
+			WHERE c.numlic IN (
+				SELECT numlic 
+				FROM cadlic 
+				WHERE liberacompra = 'S'
+			)
+			AND c.subem = 1
+		) AS source
+		ON target.numlic = source.numlic
+		AND target.item = source.item
+		WHEN NOT MATCHED THEN
+			INSERT (
+				numlic,
+				item,
+				codigo,
+				qtd,
+				valor,
+				qtdadt,
+				valoradt,
+				codccusto,
+				qtdmed,
+				valormed,
+				tipo
+			)
+			VALUES (
+				source.numlic,
+				source.item,
+				source.codigo,
+				source.qtd,
+				source.valor,
+				source.qtdadt,
+				source.valoradt,
+				source.codccusto,
+				source.qtdmed,
+				source.valormed,
+				source.tipo
+			);`)
+	fmt.Println("Cadpro - Tempo de execução: ", time.Since(start))
+}
+
+func Regpreco() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+
+	cnx_fdb.Exec(`delete from regpreco`)
+	cnx_fdb.Exec(`delete from regprecohis`)
+	cnx_fdb.Exec(`delete from regprecodoc`)
+	cnx_fdb.Exec(`EXECUTE BLOCK AS  
+                        BEGIN  
+                        INSERT INTO REGPRECODOC (NUMLIC, CODATUALIZACAO, DTPRAZO, ULTIMA)  
+                        SELECT DISTINCT A.NUMLIC, 0, DATEADD(1 YEAR TO A.DTHOM), 'S'  
+                        FROM CADLIC A WHERE A.REGISTROPRECO = 'S'
+                        AND NOT EXISTS(SELECT 1 FROM REGPRECODOC X  
+                        WHERE X.NUMLIC = A.NUMLIC);  
+
+                        INSERT INTO REGPRECO (COD, DTPRAZO, NUMLIC, CODIF, CADPRO, CODCCUSTO, ITEM, CODATUALIZACAO, QUAN1, VAUN1, VATO1, QTDENT, SUBEM, STATUS, ULTIMA)  
+                        SELECT B.ITEM, DATEADD(1 YEAR TO A.DTHOM), B.NUMLIC, B.CODIF, B.CADPRO, B.CODCCUSTO, B.ITEM, 0, B.QUAN1, B.VAUN1, B.VATO1, 0, B.SUBEM, B.STATUS, 'S'  
+                        FROM CADLIC A INNER JOIN CADPRO B ON (A.NUMLIC = B.NUMLIC) WHERE A.REGISTROPRECO = 'S' AND NOT EXISTS(SELECT 1 FROM REGPRECO X  
+                        WHERE X.NUMLIC = B.NUMLIC AND X.CODIF = B.CODIF AND X.CADPRO = B.CADPRO AND X.CODCCUSTO = B.CODCCUSTO AND X.ITEM = B.ITEM);  
+
+                        INSERT INTO REGPRECOHIS (NUMLIC, CODIF, CADPRO, CODCCUSTO, ITEM, CODATUALIZACAO, QUAN1, VAUN1, VATO1, SUBEM, STATUS, MOTIVO, MARCA, NUMORC, ULTIMA)  
+                        SELECT B.NUMLIC, B.CODIF, B.CADPRO, B.CODCCUSTO, B.ITEM, 0, B.QUAN1, B.VAUN1, B.VATO1, B.SUBEM, B.STATUS, B.MOTIVO, B.MARCA, B.NUMORC, 'S'  
+                        FROM CADLIC A INNER JOIN CADPRO B ON (A.NUMLIC = B.NUMLIC) WHERE A.REGISTROPRECO = 'S' 
+                        AND NOT EXISTS(SELECT 1 FROM REGPRECOHIS X  
+                        WHERE X.NUMLIC = B.NUMLIC AND X.CODIF = B.CODIF AND X.CADPRO = B.CADPRO AND X.CODCCUSTO = B.CODCCUSTO AND X.ITEM = B.ITEM);  
+                        END;`)
+	fmt.Println("Regpreco - Tempo de execução: ", time.Since(start))
+}
+
+func Aditivo() {
+	start := time.Now()
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_pg, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_pg.Close()
+
+	// Limpando Tabela
+	cnx_fdb.Exec("update cadpro set qtdadt = quan1, vaunadt = vaun1, vatoadt = vato1")
+	cnx_fdb.Exec("update cadprolic_detalhe_fic set qtdadt = qtd, valoradt = valor")
+
+	// Query
+	rows, err := cnx_pg.Query(`select
+						aditivonumero,
+						aditivoid,
+						c.pedidocompraforprocessoid,
+						b.itemcompramaterialid,
+						b.itemcompraaditivoqtde,
+						b.itemcompraaditivovalorunitario,
+						b.itemcompraaditivovalorunitario * b.itemcompraaditivoqtde totaladt
+					from
+						aditivo a
+					join itemcompra b on
+						a.aditivoid = b.itemcompraaditivoid
+					join pedidocompra c on
+						c.pedidocompraid = b.itemcomprapedidoid
+						and c.pedidocompraversao = b.itemcomprapedidoversao
+					where
+						aditivougid = $1 
+						and pedidocompraforprocessoid IS NOT NULL
+						--and c.pedidocompraforprocessoid = 1452
+					order by pedidocompraforprocessoid, aditivonumero, aditivoano `, GetEmpresa())
+	if err != nil {
+		panic("Erro ao consultar dados: " + err.Error())
+	}
+
+	// Prepara o update
+	updtCadpro, err := cnx_fdb.Prepare(`UPDATE CADPRO SET QTDADT = QTDADT + ?, VAUNADT = ?, VATOADT = VATOADT + ? WHERE NUMLIC = ? AND CADPRO = ?`)
+	if err != nil {
+		panic("Erro ao preparar update: " + err.Error())
+	}
+	updtDetalheFic, err := cnx_fdb.Prepare(`UPDATE CADPROLIC_DETALHE_FIC SET QTDADT = QTDADT + ?, VALORADT = VALORADT + ? WHERE NUMLIC = ? AND ITEM = ?`)
+	if err != nil {
+		panic("Erro ao preparar update: " + err.Error())
+	}
+
+	// Consulta cadpro
+	cadpros := make(map[int]string)
+	aux1, err := cnx_fdb.Query(`select cadpro, codreduz from cadest`)
+	if err != nil {
+		panic("Erro ao consultar cadpro" + err.Error())
+	}
+	for aux1.Next() {
+		var cadpro string
+		var codreduz int
+		err = aux1.Scan(&cadpro, &codreduz)
+		if err != nil {
+			panic("Erro ao scannear cadpro" + err.Error())
+		}
+		cadpros[codreduz] = cadpro
+	}
+
+	// Executa o update
+	for rows.Next() {
+		var aditivonumero, aditivoid, numlic, codreduz int
+		var qtdadt, vaunadt, vatoadt float64
+		var item nulls.Int
+		err = rows.Scan(&aditivonumero, &aditivoid, &numlic, &codreduz, &qtdadt, &vaunadt, &vatoadt)
+		if err != nil {
+			panic("Erro ao scannear variáveis: " + err.Error())
+		}
+
+		cadpro := cadpros[codreduz]
+		cnx_fdb.QueryRow(`select item from cadprolic_detalhe where numlic = ? and cadpro = ?`, numlic, cadpro).Scan(&item)
+
+		if item.Valid {
+			updtCadpro.Exec(qtdadt, vaunadt, vatoadt, numlic, cadpro)
+			updtDetalheFic.Exec(qtdadt, vatoadt, numlic, item)
+		} else {
+			continue
+		}
+	}
+	fmt.Println("Aditivo - Tempo de execução: ", time.Since(start))
 }
