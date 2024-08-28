@@ -2,7 +2,7 @@ package main
 
 import (
 	"ASSESSOR_PUBLICO/COMPRAS"
-	// "sync"
+	"sync"
 )
 
 func main() {
@@ -10,12 +10,12 @@ func main() {
     // var wg2 sync.WaitGroup
     // var wg3 sync.WaitGroup
     // var wg4 sync.WaitGroup
-    // var wg5 sync.WaitGroup
-    // var wg6 sync.WaitGroup
-    // var wg7 sync.WaitGroup
-	// var wg8 sync.WaitGroup
+    var wg5 sync.WaitGroup
+    var wg6 sync.WaitGroup
+    var wg7 sync.WaitGroup
+	var wg8 sync.WaitGroup
     
-//////////////////////////
+////////////////////////
 	// wg1.Add(4)
     // go func() {
     //     defer wg1.Done()
@@ -72,55 +72,55 @@ func main() {
 
 	// compras.Cadprolic()
 
-	// wg5.Add(2)
-	// go func() {
-	// 	defer wg5.Done()
-	// 	compras.CadprolicDetalhe()
-	// }()
-	// go func() {
-	// 	defer wg5.Done()
-	// 	compras.ProlicProlics()
-	// }()
-	// wg5.Wait()
+	wg5.Add(2)
+	go func() {
+		defer wg5.Done()
+		compras.CadprolicDetalhe()
+	}()
+	go func() {
+		defer wg5.Done()
+		compras.ProlicProlics()
+	}()
+	wg5.Wait()
 
 	compras.CadproProposta()
 
-	// wg6.Add(3)
-	// go func() {
-	// 	defer wg6.Done()
-	// 	compras.CadlicSessao()
-	// }()
-	// go func() {
-	// 	defer wg6.Done()
-	//	compras.CadproStatus()
-	// }()
-	// go func() {
-	// 	defer wg6.Done()
-	// 	compras.CadproLance()
-	// }()
-	// wg6.Wait()
+	wg6.Add(3)
+	go func() {
+		defer wg6.Done()
+		compras.CadlicSessao()
+	}()
+	go func() {
+		defer wg6.Done()
+		compras.CadproStatus()
+	}()
+	go func() {
+		defer wg6.Done()
+		compras.CadproLance()
+	}()
+	wg6.Wait()
 
-	// wg7.Add(2)
-	// go func() {
-	// 	defer wg7.Done()
-	// 	compras.CadproFinal()
-	// }()
-	// go func() {
-	// 	defer wg7.Done()
-	// 	compras.Cadpro()
-	// }()
-	// wg7.Wait()
+	wg7.Add(2)
+	go func() {
+		defer wg7.Done()
+		compras.CadproFinal()
+	}()
+	go func() {
+		defer wg7.Done()
+		compras.Cadpro()
+	}()
+	wg7.Wait()
 
-	// compras.Regpreco()
-	// wg8.Add(2)
-	// go func() {
-	// 	defer wg8.Done()
-	// 	compras.Aditivo()
-	// }()
-	// go func() {
-	// 	defer wg8.Done()
-	// 	compras.Cadped()
-	// }()
+	compras.Regpreco()
+	wg8.Add(2)
+	go func() {
+		defer wg8.Done()
+		compras.Aditivo()
+	}()
+	go func() {
+		defer wg8.Done()
+		compras.Cadped()
+	}()
 
-	// compras.Icadped()
+	compras.Icadped()
 }

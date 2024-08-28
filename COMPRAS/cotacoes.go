@@ -71,15 +71,11 @@ func Cadorc() {
 			'Nº Solicitação: '||to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 || coalesce(' - ' || pedidocompraobservacao,'') obs,
 			case when pedidocompraforprocessoid is not null then 'EC' when pedidocomprasituacao = 2 then 'AB' when pedidocomprasituacao = 3 then 'AP' else 'CA' end status,
 			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
-			case when pedidocompraforprocessoid is not null then 'EC' when pedidocomprasituacao = 2 then 'AB' when pedidocomprasituacao = 3 then 'AP' else 'CA' end status,
-			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
 			coalesce(a.pedidocompraunidorcid,0) codccusto,
 			'L' liberado_tela,
 			c.pessoanome,
 			to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 numorc_ant,
 			'N' flg_cotacao,
-			a.pedidocompraid id_ant,
-			pedidocompraforprocessoid numlic
 			a.pedidocompraid id_ant,
 			pedidocompraforprocessoid numlic
 		from
@@ -88,7 +84,6 @@ func Cadorc() {
 			a.pedidocompracotacaoid = b.cotacaoprecosid and a.pedidocompracotacaoversao = b.cotacaoprecosversao 
 		left join pessoa c on
 			a.pedidocomprasolicitanteid = c.pessoaid
-		where a.pedidocompraugid = $1 and b.cotacaoprecosnumero is null
 		where a.pedidocompraugid = $1 and b.cotacaoprecosnumero is null
 		union all
 		--Cotações
@@ -103,14 +98,11 @@ func Cadorc() {
 			'Nº Solicitação: '||to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 || coalesce(' - ' || pedidocompraobservacao,'') obs,
 			case when cotacaoprecossituacao = 1 then 'CO' when pedidocomprasituacao = 2 then 'EC' else 'CA' end status,
 			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
-			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
 			coalesce(a.pedidocompraunidorcid,0) codccusto,
 			'L' liberado_tela,
 			c.pessoanome,
 			to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 numorc_ant,
 			'S',
-			cotacaoprecosid,
-			null --pedidocompraforprocessoid numlic
 			cotacaoprecosid,
 			null --pedidocompraforprocessoid numlic
 		from
