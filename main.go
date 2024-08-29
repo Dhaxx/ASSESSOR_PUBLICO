@@ -9,7 +9,7 @@ import (
 
 func main() {
 	var wg1 sync.WaitGroup
-    var wg2 sync.WaitGroup
+	var wg2 sync.WaitGroup
     var wg3 sync.WaitGroup
     var wg4 sync.WaitGroup
     var wg5 sync.WaitGroup
@@ -38,7 +38,6 @@ func main() {
     }()
 	wg1.Wait()
 
-	// Cotação
 	wg2.Add(2)
 	go func() {
 		defer wg2.Done()
@@ -46,34 +45,33 @@ func main() {
 	}()
 	go func() {
 		defer wg2.Done()
-		compras.Cadorc()
-
+		compras.Cadorc(p)
 	}()
 	wg2.Wait()
 
 	wg3.Add(2)
 	go func() {
 		defer wg3.Done()
-		compras.Icadorc()
+		compras.Icadorc(p)
 	}()
 	go func() {
 		defer wg3.Done()
-		compras.Fcadorc()
+		compras.Fcadorc(p)
 	}()
 	wg3.Wait()
 
 	wg4.Add(2)
 	go func() {
 		defer wg4.Done()
-		compras.Vcadorc()
+		compras.Vcadorc(p)
 	}()
 	go func() {
 		defer wg4.Done()
-		compras.Cadlic()	
+		compras.Cadlic(p)	
 	}()
 	wg4.Wait()
 
-	compras.Cadprolic()
+	compras.Cadprolic(p)
 
 	wg5.Add(2)
 	go func() {
@@ -82,11 +80,11 @@ func main() {
 	}()
 	go func() {
 		defer wg5.Done()
-		compras.ProlicProlics()
+		compras.ProlicProlics(p)
 	}()
 	wg5.Wait()
 
-	compras.CadproProposta()
+	compras.CadproProposta(p)
 
 	wg6.Add(3)
 	go func() {
@@ -118,12 +116,12 @@ func main() {
 	wg8.Add(2)
 	go func() {
 		defer wg8.Done()
-		compras.Aditivo()
+		compras.Aditivo(p)
 	}()
 	go func() {
 		defer wg8.Done()
-		compras.Cadped()
+		compras.Cadped(p)
 	}()
 
-	compras.Icadped()
+	compras.Icadped(p)
 }

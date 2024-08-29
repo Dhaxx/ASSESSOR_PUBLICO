@@ -1,16 +1,15 @@
 package compras
 
 import (
-	"ASSESSOR_PUBLICO/CONEXAO"
+	conexao "ASSESSOR_PUBLICO/CONEXAO"
 	"fmt"
-	"time"
 
 	"github.com/gobuffalo/nulls"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
-func Cadped() {
-	start := time.Now()
-
+func Cadped(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		fmt.Println(err)
@@ -27,7 +26,7 @@ func Cadped() {
 	cnx_fdb.Exec("DELETE from ICADPED")
 	cnx_fdb.Exec("DELETE from CADPED")
 
-	// Query 
+	// Query
 	rows, err := cnx_pg.Query(`select
 			to_char(autforid,
 			'fm00000/')|| autforano%2000 numped,
@@ -55,6 +54,21 @@ func Cadped() {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
 
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from () as rn`).Scan(&count)
+	if err != nil {
+		panic(`Erro ao contar registros` + err.Error())
+	}
+	bar15 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("Cadped - "),
+			decor.CountersNoUnit("%d/%d", decor.WCSyncWidth),
+		),
+		mpb.AppendDecorators(
+			decor.Percentage(decor.WCSyncSpace),
+		),
+	)
+
 	// Prepara Insert
 	insert, err := cnx_fdb.Prepare(`insert into cadped (numped, num, ano, datped, codif, entrou, id_cadped, empresa, numlic, obs, numpedant, codccusto) values (?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
@@ -73,13 +87,11 @@ func Cadped() {
 		if err != nil {
 			panic("Erro ao inserir dados: " + err.Error())
 		}
+		bar15.Increment()
 	}
-	fmt.Println("Cadped - Finalizado em: ", time.Since(start))
 }
 
-func Icadped() {
-	start := time.Now()
-
+func Icadped(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		fmt.Println(err)
@@ -119,6 +131,21 @@ func Icadped() {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
 
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from () as rn`).Scan(&count)
+	if err != nil {
+		panic(`Erro ao contar registros` + err.Error())
+	}
+	bar16 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("Icadped - "),
+			decor.CountersNoUnit("%d/%d", decor.WCSyncWidth),
+		),
+		mpb.AppendDecorators(
+			decor.Percentage(decor.WCSyncSpace),
+		),
+	)
+
 	// Consulta Auxiliar
 	cadpros := make(map[int]string)
 	aux1, err := cnx_fdb.Query(`select cadpro, codreduz from cadest`)
@@ -152,11 +179,11 @@ func Icadped() {
 		}
 
 		cadpro = cadpros[codreduz.Int]
-		
+
 		_, err = insert.Exec(numped, item, cadpro, qtd, prcunt, prctot, codccusto, id_cadped)
 		if err != nil {
 			panic("Erro ao inserir dados: " + err.Error())
 		}
+		bar16.Increment()
 	}
-	fmt.Println("Icadped - Finalizado em: ", time.Since(start))
 }

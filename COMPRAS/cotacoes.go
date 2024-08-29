@@ -2,15 +2,13 @@ package compras
 
 import (
 	conexao "ASSESSOR_PUBLICO/CONEXAO"
-	"fmt"
-	"time"
 
 	"github.com/gobuffalo/nulls"
-	"github.com/schollz/progressbar/v3"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
-func Cadorc() {
-	start := time.Now()
+func Cadorc(p *mpb.Progress) {
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
@@ -117,6 +115,69 @@ func Cadorc() {
 		panic("Falha ao buscar pedidos de compra: " + err.Error())
 	}
 
+	// Conta Registros
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (--Solicitações
+		select
+			a.pedidocompraid,
+			'9'||to_char(row_number() over (partition by pedidocompraano order by pedidocompradata),'fm0000') num,
+			pedidocompraano ano,
+			'9'||to_char(row_number() over (partition by pedidocompraano order by pedidocompradata),'fm0000')||'/'||pedidocompraano % 2000 numorc,
+			cast(pedidocompradata as varchar) data,
+			substring(pedidocomprajustificativa, 1, 1024) descr,
+			'NORMAL' prioridade,
+			'Nº Solicitação: '||to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 || coalesce(' - ' || pedidocompraobservacao,'') obs,
+			case when pedidocompraforprocessoid is not null then 'EC' when pedidocomprasituacao = 2 then 'AB' when pedidocomprasituacao = 3 then 'AP' else 'CA' end status,
+			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
+			coalesce(a.pedidocompraunidorcid,0) codccusto,
+			'L' liberado_tela,
+			c.pessoanome,
+			to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 numorc_ant,
+			'N' flg_cotacao,
+			a.pedidocompraid id_ant,
+			pedidocompraforprocessoid numlic
+		from
+			pedidocompra a
+		left join cotacaoprecos b on
+			a.pedidocompracotacaoid = b.cotacaoprecosid and a.pedidocompracotacaoversao = b.cotacaoprecosversao 
+		left join pessoa c on
+			a.pedidocomprasolicitanteid = c.pessoaid
+		where a.pedidocompraugid = $1 and b.cotacaoprecosnumero is null
+		union all
+		--Cotações
+		select
+			pedidocompraid,
+			to_char(cotacaoprecosnumero,'fm00000') num,
+			cotacaoprecosano ano,
+			to_char(cotacaoprecosnumero, 'fm00000')||'/'||cotacaoprecosano % 2000 numorc,
+			cast(pedidocompradata as varchar) data,
+			substring(cotacaoprecosdescricao, 1, 1024) descr,
+			'NORMAL' prioridade,
+			'Nº Solicitação: '||to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 || coalesce(' - ' || pedidocompraobservacao,'') obs,
+			case when cotacaoprecossituacao = 1 then 'CO' when pedidocomprasituacao = 2 then 'EC' else 'CA' end status,
+			case when a.pedidocompraforprocessoid is not null then 'S' else 'N' end liberado,
+			coalesce(a.pedidocompraunidorcid,0) codccusto,
+			'L' liberado_tela,
+			c.pessoanome,
+			to_char(pedidocomprapedido, 'fm00000') || '/' || pedidocompraano % 2000 numorc_ant,
+			'S',
+			cotacaoprecosid,
+			null --pedidocompraforprocessoid numlic
+		from
+			pedidocompra a
+		join cotacaoprecos b on
+			a.pedidocompracotacaoid = b.cotacaoprecosid and a.pedidocompracotacaoversao = b.cotacaoprecosversao 
+		left join pessoa c on
+			a.pedidocomprasolicitanteid = c.pessoaid
+		where a.pedidocompraugid = $2
+		order by data desc) as rn`, GetEmpresa(), GetEmpresa()).Scan(&count)
+	bar6 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("CADORC: "),
+			decor.Percentage(),
+		),
+	)
+
 	var id_cadorc, codccusto, id_ant, numlic nulls.Int
 	var num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, liberado_tela, solicitante, numorc_ant, flg_cotacao nulls.String
 	empresa := nulls.NewInt(GetEmpresa())
@@ -129,16 +190,14 @@ func Cadorc() {
 
 		_, err = insert.Exec(id_cadorc, num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, codccusto, liberado_tela, empresa, solicitante, numorc_ant, flg_cotacao, id_ant, numlic)
 		if err != nil {
-			// fmt.Println("Falha ao Inserir Registro na Cadorc: ", err)
+			// panic("Falha ao Inserir Registro na Cadorc: " + err.Error())
 			continue
 		}
+		bar6.Increment()
 	}
-
-	fmt.Println("Cadorc - Tempo de execução: ", time.Since(start))
 }
 
-func Icadorc() {
-	start := time.Now()
+func Icadorc(p *mpb.Progress) {
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
@@ -211,7 +270,7 @@ func Icadorc() {
 								LEFT JOIN cotacaoprecos f ON f.cotacaoprecosid = a.pedidocompracotacaoid
 									AND f.cotacaoprecosversao = a.pedidocompracotacaoversao 
 								WHERE
-									a.pedidocompraugid = 2 
+									a.pedidocompraugid = $1 
 									AND itemcompraorigem = 1 
 									and itemcompramaterialid is not null
 									--AND COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) = 2
@@ -227,7 +286,7 @@ func Icadorc() {
 									END,
 									COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
 									pedidocompracotacaoid
-								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)`)
+								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)`,GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar itens de pedido de compra: " + err.Error())
 	}
@@ -259,7 +318,7 @@ func Icadorc() {
 								LEFT JOIN cotacaoprecos f ON f.cotacaoprecosid = a.pedidocompracotacaoid
 									AND f.cotacaoprecosversao = a.pedidocompracotacaoversao 
 								WHERE
-									a.pedidocompraugid = 2 
+									a.pedidocompraugid = $1
 									AND itemcompraorigem = 1 
 									and itemcompramaterialid is not null
 									--AND COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) = 2
@@ -275,7 +334,7 @@ func Icadorc() {
 									END,
 									COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
 									pedidocompracotacaoid
-								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)) as rn`).Scan(&count)
+								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)) as rn`, GetEmpresa()).Scan(&count)
 
 	// Consulta Auxiliar
 	aux2, err := cnx_fdb.Query("select numorc, id_cadorc, flg_cotacao, id_ant from cadorc")
@@ -296,7 +355,12 @@ func Icadorc() {
 		numorcs[flg_cotacao][id_ant] = []string{numorc, id_cadorc}
 	}
 
-	bar := progressbar.Default(int64(count))
+	bar7 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("ICADORC: "),
+			decor.Percentage(),
+		),
+	)
 	for rows.Next() {
 		err = rows.Scan(&item, &codreduz, &qtd, &valor, &codccusto, &flg_cotacao, &id_ant)
 		if err != nil {
@@ -311,14 +375,11 @@ func Icadorc() {
 		if err != nil {
 			continue
 		}
-		bar.Add(1)
+		bar7.Increment()
 	}
-	// cnx_fdb.Exec("UPDATE ICADORC SET ITEMORC = ITEM")
-	fmt.Println("Icadorc - Tempo de execução: ", time.Since(start))
 }
 
-func Fcadorc() {
-	start := time.Now()
+func Fcadorc(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		panic("Falha ao conectar com o banco de destino: " + err.Error())
@@ -386,13 +447,76 @@ func Fcadorc() {
 								GROUP BY
 									numorc,
 									pessoaid,
-									pessoanome;`,GetEmpresa())
+									pessoanome;`, GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar fornecedores: " + err.Error())
 	}
 
+	// Conta Registros
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (SELECT
+									numorc,
+									pessoaid codif,
+									substring(pessoanome,1,70) nome,
+									SUM(valorctot) AS valorc
+								FROM
+									(
+									SELECT
+										d.pedidocompracotacaoid,
+										b.pessoaid,
+										b.pessoanome,
+										SUM(COALESCE(c.itemcompraquantidade, 0)) AS qtd,
+										a.itemcompracotacaovalorunitario,
+										SUM(ROUND(COALESCE(a.itemcompracotacaovalorunitario, 0) * COALESCE(c.itemcompraquantidade, 0))) AS valorctot,
+										c.itemcompraordem,
+										TO_CHAR(e.cotacaoprecosnumero, 'fm00000') || '/' || e.cotacaoprecosano % 2000 AS numorc,
+										NULL AS classe,
+										NULL AS ganhou,
+										a.itemcompracotacaovencedora,
+										a.itemcompracotacaoempatada
+									FROM
+										itemcompracotacao a
+									JOIN
+										pessoa b ON a.itemcompracotacaofornecedorid = b.pessoaid
+									JOIN
+										itemcompra c ON c.itemcompraid = a.itemcompraid AND a.itemcompraversao = c.itemcompraversao
+									JOIN
+										pedidocompra d ON d.pedidocompraid = c.itemcomprapedidoid AND d.pedidocompraversao = c.itemcomprapedidoversao
+									JOIN
+										cotacaoprecos e ON e.cotacaoprecosid = d.pedidocompracotacaoid AND e.cotacaoprecosversao = d.pedidocompracotacaoversao
+									WHERE
+										d.pedidocompraugid = $1
+									GROUP BY
+										d.pedidocompracotacaoid,
+										b.pessoaid,
+										b.pessoanome,
+										a.itemcompracotacaovalorunitario,
+										c.itemcompraordem,
+										e.cotacaoprecosnumero,
+										e.cotacaoprecosano,
+										a.itemcompracotacaovencedora,
+										a.itemcompracotacaoempatada
+									ORDER BY
+										numorc,
+										c.itemcompraordem,
+										a.itemcompracotacaovencedora
+									) AS rn
+								GROUP BY
+									numorc,
+									pessoaid,
+									pessoanome) as rn`, GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic("Falha ao contar registros: " + err.Error())
+	}
+	bar8 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("FCADORC: "),
+			decor.Percentage(),
+		),
+	)
+
 	// Limpa tabelas
-	cnx_fdb.Exec("delete from fcadorc")	
+	cnx_fdb.Exec("delete from fcadorc")
 
 	aux1, err := cnx_fdb.Query("select numorc, id_cadorc from cadorc")
 	if err != nil {
@@ -425,12 +549,11 @@ func Fcadorc() {
 		if err != nil {
 			panic("Falha ao inserir fornecedores: " + err.Error())
 		}
+		bar8.Increment()
 	}
-	fmt.Println("Fcadorc - Tempo de execução: ", time.Since(start))
 }
 
-func Vcadorc() {
-	start := time.Now()
+func Vcadorc(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		panic("Falha ao conectar com o banco de destino: " + err.Error())
@@ -457,7 +580,7 @@ func Vcadorc() {
 	insert, err := tx.Prepare(`insert into vcadorc(numorc, item, codif, vlruni, vlrtot, id_cadorc, vencedor_ant) values (?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic("Falha ao preparar insert: " + err.Error())
-	}	
+	}
 
 	rows, err := cnx_pg.Query(`SELECT
 									numorc,
@@ -496,7 +619,7 @@ func Vcadorc() {
 									left join estimativa f on f.estimativacotacaoid = e.cotacaoprecosid and f.estimativacotacaoversao = e.cotacaoprecosversao
 									left join estimativaitem g ON f.estimativaid = g.estimativaid and g.estimativaitemmaterialid = c.itemcompramaterialid
 									WHERE
-										d.pedidocompraugid = 2
+										d.pedidocompraugid = $1
 									GROUP BY
 										d.pedidocompracotacaoid,
 										b.pessoaid,
@@ -512,11 +635,75 @@ func Vcadorc() {
 										numorc,
 										item,
 										a.itemcompracotacaovencedora
-								) AS rn;
-								`)
+								) AS rn;`, GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar fornecedores: " + err.Error())
 	}
+
+	// Consulta Auxiliar
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (SELECT
+									numorc,
+									item,
+									pessoaid AS codif, 
+									coalesce(itemcompracotacaovalorunitario,0) AS vlruni,
+									valorctot AS vlrtot,
+									itemcompracotacaovencedora
+								FROM (
+									SELECT
+										d.pedidocompracotacaoid,
+										b.pessoaid,
+										b.pessoanome,
+										SUM(COALESCE(c.itemcompraquantidade, 0)) AS qtd,
+										a.itemcompracotacaovalorunitario,
+										SUM(ROUND(COALESCE(a.itemcompracotacaovalorunitario, 0) * COALESCE(c.itemcompraquantidade, 0))) AS valorctot,
+										coalesce(g.estimativaitemid,c.itemcompraordem) item,
+										TO_CHAR(e.cotacaoprecosnumero, 'fm00000') || '/' || e.cotacaoprecosano % 2000 AS numorc,
+										NULL AS classe,
+										NULL AS ganhou,
+										a.itemcompracotacaovencedora,
+										a.itemcompracotacaoempatada
+									FROM
+										itemcompracotacao a
+									JOIN 
+										pessoa b ON a.itemcompracotacaofornecedorid = b.pessoaid
+									JOIN 
+										itemcompra c ON c.itemcompraid = a.itemcompraid
+											AND a.itemcompraversao = c.itemcompraversao
+									JOIN 
+										pedidocompra d ON d.pedidocompraid = c.itemcomprapedidoid
+											AND d.pedidocompraversao = c.itemcomprapedidoversao
+									JOIN 
+										cotacaoprecos e ON e.cotacaoprecosid = d.pedidocompracotacaoid
+											AND e.cotacaoprecosversao = d.pedidocompracotacaoversao
+									left join estimativa f on f.estimativacotacaoid = e.cotacaoprecosid and f.estimativacotacaoversao = e.cotacaoprecosversao
+									left join estimativaitem g ON f.estimativaid = g.estimativaid and g.estimativaitemmaterialid = c.itemcompramaterialid
+									WHERE
+										d.pedidocompraugid = $1
+									GROUP BY
+										d.pedidocompracotacaoid,
+										b.pessoaid,
+										b.pessoanome,
+										a.itemcompracotacaovalorunitario,
+										e.cotacaoprecosnumero,
+										e.cotacaoprecosano,
+										a.itemcompracotacaovencedora,
+										a.itemcompracotacaoempatada,
+										estimativaitemid,
+										c.itemcompraordem
+									ORDER BY
+										numorc,
+										item,
+										a.itemcompracotacaovencedora) as q) as rn`, GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic("Falha ao contar registros: " + err.Error())
+	}
+	bar9 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("VCADORC: "),
+			decor.Percentage(),
+		),
+	)
 
 	aux1, err := cnx_fdb.Query("select numorc, id_cadorc from cadorc")
 	if err != nil {
@@ -550,6 +737,7 @@ func Vcadorc() {
 		if err != nil {
 			panic("Falha ao inserir fornecedores: " + err.Error())
 		}
+		bar9.Increment()
 	}
 	err = tx.Commit()
 	if err != nil {
@@ -569,6 +757,4 @@ func Vcadorc() {
 							UPDATE vcadorc SET ganhou = :codif, vlrganhou = :vlruni WHERE id_cadorc = :id_cadorc AND item = :item;
 						END
 					END`)
-
-	fmt.Println("Vcadorc - Tempo de execução: ", time.Since(start))
 }

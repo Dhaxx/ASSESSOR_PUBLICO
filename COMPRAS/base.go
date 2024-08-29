@@ -1,9 +1,7 @@
 package compras
 
 import (
-	"ASSESSOR_PUBLICO/CONEXAO"
-	"time"
-	"fmt"
+	conexao "ASSESSOR_PUBLICO/CONEXAO"
 
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -24,9 +22,9 @@ func Cadunimedida(p *mpb.Progress) {
 	}
 	defer cnx_pg.Close()
 
-	cnx_fdb.Exec("DELETE FROM CADEST")  // Limpa tabela
-    cnx_fdb.Exec("DELETE FROM CADUNIMEDIDA")  // Limpa tabela
-	cnx_fdb.Exec("ALTER TABLE CADUNIMEDIDA ADD ID_ANT INTEGER")  // Cria Campo de identificação
+	cnx_fdb.Exec("DELETE FROM CADEST")                          // Limpa tabela
+	cnx_fdb.Exec("DELETE FROM CADUNIMEDIDA")                    // Limpa tabela
+	cnx_fdb.Exec("ALTER TABLE CADUNIMEDIDA ADD ID_ANT INTEGER") // Cria Campo de identificação
 
 	// Prepara Insert
 	insert, err := cnx_fdb.Prepare(`INSERT INTO CADUNIMEDIDA(sigla, descricao, id_ant) VALUES(?,?,?)`)
@@ -56,7 +54,7 @@ func Cadunimedida(p *mpb.Progress) {
 	if err != nil {
 		panic("Falha ao contar registros: " + err.Error())
 	}
-	
+
 	// Itera sobre o resultado
 	var sigla, descricao string
 	var id_ant int
@@ -64,9 +62,6 @@ func Cadunimedida(p *mpb.Progress) {
 		mpb.PrependDecorators(
 			decor.Name("CADUNIMEDIDA: "),
 			decor.Percentage(),
-		),
-		mpb.AppendDecorators(
-			decor.CountersKibiByte("% .2f / % .2f"),
 		),
 	)
 
@@ -102,8 +97,8 @@ func GrupoSubgrupo(p *mpb.Progress) {
 
 	// Limpa tabela
 	cnx_fdb.Exec("DELETE FROM CADEST")
-	cnx_fdb.Exec("DELETE FROM CADSUBGR")  
-	cnx_fdb.Exec("DELETE FROM CADGRUPO")  
+	cnx_fdb.Exec("DELETE FROM CADSUBGR")
+	cnx_fdb.Exec("DELETE FROM CADGRUPO")
 
 	// Cria Campo de identificação
 	cnx_fdb.Exec("ALTER TABLE CADGRUPO ADD GRUPO_ANT INTEGER")
@@ -157,9 +152,6 @@ func GrupoSubgrupo(p *mpb.Progress) {
 			decor.Name("GRUPO/SUBGRUPO: "),
 			decor.Percentage(),
 		),
-		mpb.AppendDecorators(
-			decor.CountersKibiByte("% .2f / % .2f"),
-		),
 	)
 
 	// Itera sobre o resultado
@@ -188,7 +180,7 @@ func GrupoSubgrupo(p *mpb.Progress) {
 }
 
 func Cadest(p *mpb.Progress) {
-	start := time.Now()
+	// start := time.Now()
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
@@ -249,10 +241,38 @@ func Cadest(p *mpb.Progress) {
 		panic("Falha ao executar select: " + err.Error())
 	}
 
+	// Conta registros
+	var count int
+	err = cnx_pg.QueryRow(`SELECT COUNT(*) FROM (select
+									'0'||substring(hierarquiaconcatniveis, 1, 2) grupo,
+									'0'||substring(hierarquiaconcatniveis, 4, 2) subgrupo,
+									row_number() over (partition by hierarquiaconcatniveis order by hierarquiaconcatniveis) codigo,
+									a.materialdescricao disc1,
+									case when materialtipo = 2 then 'S' when materialtipo = 1 then 'C' else 'P' end tipopro,
+									substring(c.unidademedidasigla,1,5) unid1,
+									case when a.materialcaract is null or a.materialcaract = '' then a.materialconciddesc else materialcaract end as descr1,
+									a.materialid codreduz,
+									case when materialsituacao = 'A' then 'N' else 'S' end as ocultar
+								from
+									material a
+								join hierarquia b on
+									a.materialhierarquiaid = b.hierarquiaid
+								join unidademedida c on
+									a.materialundmedidaid = c.unidademedidaid) as rn`).Scan(&count)
+	if err != nil {
+		panic("Falha ao contar registros: " + err.Error())
+	}
+	bar5 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("CADEST: "),
+			decor.Percentage(),
+		),
+	)
+
 	// Itera sobre o resultado
 	var grupo, subgrupo, disc1, tipopro, unid1, discr1, codreduz, ocultar string
 	var intCodigo int
-	
+
 	for rows.Next() {
 		err = rows.Scan(&grupo, &subgrupo, &intCodigo, &disc1, &tipopro, &unid1, &discr1, &codreduz, &ocultar)
 		if err != nil {
@@ -261,20 +281,21 @@ func Cadest(p *mpb.Progress) {
 
 		subgrupoCodigo := EstourouSubgr(intCodigo, subgrupo, grupo, cnx_fdb)
 
-		cadpro := grupo +"."+subgrupoCodigo[0]+"."+ subgrupoCodigo[1]
+		cadpro := grupo + "." + subgrupoCodigo[0] + "." + subgrupoCodigo[1]
 		subgrupo = subgrupoCodigo[0]
 		codigo := subgrupoCodigo[1]
-		
+
 		_, err = insert.Exec(cadpro, grupo, subgrupo, codigo, disc1, tipopro, unid1, discr1, codreduz, ocultar)
 		if err != nil {
 			panic("Falha ao inserir dados: " + err.Error())
 		}
+		bar5.Increment()
 	}
 	// Comita a transação em Cadest
 	if err := tx.Commit(); err != nil {
 		panic("Falha ao commitar transação: " + err.Error())
 	}
-	fmt.Println("Cadest - Tempo de execução: ", time.Since(start))
+	// fmt.Println("Cadest - Tempo de execução: ", time.Since(start))
 }
 
 func Destino(p *mpb.Progress) {
@@ -326,9 +347,6 @@ func Destino(p *mpb.Progress) {
 			decor.Name("DESTINO: "),
 			decor.Percentage(),
 		),
-		mpb.AppendDecorators(
-			decor.CountersKibiByte("% .2f / % .2f"),
-		),
 	)
 
 	// Itera sobre o resultado
@@ -351,7 +369,7 @@ func Destino(p *mpb.Progress) {
 	// fmt.Println("Destino - Tempo de execução: ", time.Since(start))
 }
 
-func CentroCusto() {
+func CentroCusto(p *mpb.Progress) {
 	// start := time.Now()
 	// Cria Conexão com os bancos
 	cnx_fdb, err := conexao.ConexaoDestino()
@@ -367,8 +385,8 @@ func CentroCusto() {
 	defer cnx_pg.Close()
 
 	// Cria Campo de identificação
-	cnx_fdb.Exec("ALTER TABLE CENTROCUSTO ADD ID_ANT INTEGER")  // Cria Campo de identificação
-	cnx_fdb.Exec("ALTER TABLE CENTROCUSTO ADD COD_ANT VARCHAR(30)")  // Cria Campo de identificação
+	cnx_fdb.Exec("ALTER TABLE CENTROCUSTO ADD ID_ANT INTEGER")      // Cria Campo de identificação
+	cnx_fdb.Exec("ALTER TABLE CENTROCUSTO ADD COD_ANT VARCHAR(30)") // Cria Campo de identificação
 
 	// Limpa tabela
 	cnx_fdb.Exec("DELETE FROM CENTROCUSTO")
@@ -411,10 +429,40 @@ func CentroCusto() {
 								from
 									unidadeorcamentaria u
 								join orgao o on u.undorcorgaoid = o.orgaoid 
-								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1`, GetEmpresa()) 
+								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1`, GetEmpresa())
 	if err != nil {
 		panic("Falha ao executar select: " + err.Error())
 	}
+
+	// Conta registros
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (select
+									substring(undorccodigo, 1, 2) poder,
+									substring(undorccodigo, 4, 2) orgao,
+									0 destino,
+									'001' ccusto,
+									undorcdescricao descr,
+									undorccodigodesc obs,
+									0 placa,
+									undorcid codccusto,
+									substring(undorccodigo, 7, 2) unidade,
+									case when undorcsituacao = 'A' then 'N' else 'S' end as ocultar,
+									undorcid id_ant,
+									undorccodigo cod_ant
+								from
+									unidadeorcamentaria u
+								join orgao o on u.undorcorgaoid = o.orgaoid 
+								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1)`, GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic("Falha ao contar registros: " + err.Error())
+	}
+
+	bar4 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("CENTRO DE CUSTO: "),
+			decor.Percentage(),
+		),
+	)
 
 	// Itera sobre o resultado
 	var poder, orgao, destino, ccusto, descr, obs, placa, unidade, ocultar, cod_ant string

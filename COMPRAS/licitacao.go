@@ -1,16 +1,17 @@
 package compras
 
 import (
-	"ASSESSOR_PUBLICO/CONEXAO"
+	conexao "ASSESSOR_PUBLICO/CONEXAO"
 	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/gobuffalo/nulls"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
-func Cadlic() {
-	start := time.Now()
+func Cadlic(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		panic("Falha ao conectar ao banco:" + err.Error())
@@ -22,6 +23,9 @@ func Cadlic() {
 		panic("Falha ao conectar ao banco:" + err.Error())
 	}
 	defer cnx_pg.Close()
+
+	// Limpando Tabela
+	cnx_fdb.Exec("DELETE FROM CADLIC")
 
 	// Query
 	rows, err := cnx_pg.Query(`SELECT 
@@ -102,15 +106,107 @@ func Cadlic() {
 									left join 
 										processo e on e.processoid = d.cotacaoprecosprocessoid
 									WHERE 
-										forprocessougid = 2 
+										forprocessougid = $1
 									ORDER BY 
 										a.forprocessoano DESC, 
 										a.forprocessonumero
-								) AS rn;
-								`)
+								) AS rn;`, GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar no banco: " + err.Error())
 	}
+
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (SELECT 
+									q.*, 
+									CASE
+										WHEN modlic = 'IN01' THEN 5
+										WHEN modlic = 'DI01' THEN 1
+										WHEN modlic = 'CC02' THEN 2
+										WHEN modlic = 'TOM3' THEN 3
+										WHEN modlic = 'CON4' THEN 4
+										WHEN modlic = 'PE01' THEN 9
+										WHEN modlic = 'PP01' THEN 8
+										WHEN modlic = 'LEIL' THEN 6
+										WHEN modlic = 'CS01' THEN 7
+									END AS codmod
+								FROM (
+									SELECT
+										a.forprocessonumero AS numpro,
+										CAST(forprocessodata AS VARCHAR) AS datae,
+										CAST(forprocessoaudienciapublicadata AS VARCHAR) AS dtpub,
+										CAST(forprocessodatafimcred AS VARCHAR) AS dtenc,
+										forprocessohorainiciocred AS horabe,
+										SUBSTRING(objetopadraodescricao, 1, 1024) AS discr,
+										/*CASE 
+											WHEN forprocessoagruparitens = 'S' THEN 'Menor Preco Global'
+											ELSE 'Menor Preco Unitario'
+										END AS discr7,*/
+										'Menor Preco Unitario' AS discr7,
+										CASE 
+											WHEN b.controletipocampo = 40 AND controletipoid = 670 THEN 'IN01'
+											WHEN b.controletipocampo = 40 AND controletipoid IN (671, 681, 678) THEN 'DI01'
+											WHEN b.controletipocampo = 40 AND controletipoid = 672 THEN 'CCO2'
+											WHEN b.controletipocampo = 40 AND controletipoid = 673 THEN 'TOM3'
+											WHEN b.controletipocampo = 40 AND controletipoid IN (674, 675) THEN 'CON4'
+											WHEN b.controletipocampo = 40 AND controletipoid = 676 THEN 'PE01'
+											WHEN b.controletipocampo = 40 AND controletipoid = 677 THEN 'PP01'
+											WHEN b.controletipocampo = 40 AND controletipoid = 679 THEN 'LEIL'
+											WHEN b.controletipocampo = 40 AND controletipoid = 680 THEN 'CS01'
+										END AS modlic,
+										NULL AS dthom,
+										NULL AS dtadj,
+										COALESCE(forprocessosituacao, 0) AS comp_ant,
+										forprocessonumero,
+										forprocessoano,
+										a.forprocessoregistropreco,
+										'T' AS ctlance,
+										CASE 
+											WHEN forprocessoobraid IS NULL THEN 'N'
+											ELSE 'S'
+										END AS obra,
+										TO_CHAR(a.forprocessoid, 'fm000000/') || forprocessoano % 2000 AS proclic,
+										a.forprocessoid,
+										2 AS microempresa,
+										1 AS licnova,
+										'$' AS tlance,
+										'N' AS mult_entidade,
+										a.forprocessoano,
+										'N' AS lei_invertfasestce,
+										a.forprocessovalorestimado,
+										forprocessojustificativa AS detalhe,
+										a.forprocessocondicaopagamento,
+										a.forprocessoaudespcodigo AS codtce,
+										CASE 
+											WHEN a.forprocessoaudespcodigo IS NOT NULL THEN 'S'
+											ELSE 'N'
+										END AS enviotce,
+										to_char(d.cotacaoprecosnumero,'fm00000/')||d.cotacaoprecosano%2000 numorc,
+										e.processonumero,
+										e.processoano
+									FROM
+										formalizacaoprocesso a
+									LEFT JOIN 
+										controletipo b ON a.forprocessomodalidadeid = b.controletipoid
+									left join 
+										objetopadrao c on c.objetopadraoid = a.forprocessoobjetoid
+									left join 
+										cotacaoprecos d on d.cotacaoprecosid = a.forprocessocotacaoid and d.cotacaoprecosversao = a.forprocessocotacaoversao 
+									left join 
+										processo e on e.processoid = d.cotacaoprecosprocessoid
+									WHERE 
+										forprocessougid = $1
+									ORDER BY 
+										a.forprocessoano DESC, 
+										a.forprocessonumero) AS q) as rn`, GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic(`Erro ao contar registros` + err.Error())
+	}
+	bar10 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("CADLIC: "),
+			decor.Percentage(),
+		),
+	)
 
 	tx, err := cnx_fdb.Begin()
 	if err != nil {
@@ -163,8 +259,8 @@ func Cadlic() {
 	var valor nulls.Float64
 	empresa := GetEmpresa()
 	for rows.Next() {
-		err = rows.Scan(&numpro, &datae, &dtpub, &dtenc, &horabe, &discr, &discr7, &modlic, &dthom, &dtadj, &comp_ant, &numero, &processo_ano, &registropreco, &ctlance, &obra, &proclic, &numlic, &microempresa, 
-						&licnova, &tlance, &mult_entidade, &ano, &lei_invertfasestce, &valor, &detalhe, &discr9, &codtce, &enviotce, &numorc, &processo, &processo_ano, &codmod)
+		err = rows.Scan(&numpro, &datae, &dtpub, &dtenc, &horabe, &discr, &discr7, &modlic, &dthom, &dtadj, &comp_ant, &numero, &processo_ano, &registropreco, &ctlance, &obra, &proclic, &numlic, &microempresa,
+			&licnova, &tlance, &mult_entidade, &ano, &lei_invertfasestce, &valor, &detalhe, &discr9, &codtce, &enviotce, &numorc, &processo, &processo_ano, &codmod)
 		if err != nil {
 			panic("Erro ao scannear variáveis: " + err.Error())
 		}
@@ -173,7 +269,7 @@ func Cadlic() {
 		comp := 0
 
 		if comp_ant == 1 || comp_ant == 15 { // Em formalização
-			comp = 0 
+			comp = 0
 		} else if comp_ant == 2 { // Em andamento
 			comp = 1
 		} else if comp_ant == 3 || comp_ant == 8 || comp_ant == 16 || comp_ant == 10 || comp_ant == 11 || comp_ant == 13 || comp_ant == 14 { // Ratificada ou Encerrado
@@ -195,15 +291,13 @@ func Cadlic() {
 		if err != nil {
 			panic("Erro ao fazer inserção de dados" + err.Error())
 		}
+		bar10.Increment()
 	}
 	err = tx.Commit()
 	if err != nil {
 		panic("Erro ao fechar transaction" + err.Error())
 	}
-	fmt.Println("Cadlic - Tempo de execução: ", time.Since(start))
 
-	start = time.Now()
-	println("Atualizando CADORC...")
 	cnx_fdb.Exec(`EXECUTE BLOCK AS
 					DECLARE VARIABLE NUMLIC INTEGER;
 					DECLARE VARIABLE NUMORC VARCHAR(8);
@@ -216,7 +310,7 @@ func Cadlic() {
 							UPDATE CADORC SET PROCLIC = :PROCLIC, NUMLIC = :NUMLIC WHERE NUMORC = :NUMORC;
 						END
 						UPDATE CADLIC SET NUMORC = NULL;
-					END`)	
+					END`)
 
 	cnx_fdb.Exec(`EXECUTE BLOCK AS
 					DECLARE VARIABLE DESCMOD VARCHAR(1024);
@@ -229,12 +323,10 @@ func Cadlic() {
 							UPDATE CADLIC SET LICIT = :DESCMOD WHERE CODMOD = :CODMOD;
 						END
 					END`)
-	cnx_fdb.Exec(`UPDATE CADLIC SET anomod = ano where anomod is null`) 
-	fmt.Println("Atualização de CADORC - Tempo de execução: ", time.Since(start))
+	cnx_fdb.Exec(`UPDATE CADLIC SET anomod = ano where anomod is null`)
 }
 
-func Cadprolic() {
-	start := time.Now()
+func Cadprolic(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		panic("Erro ao conectar no banco: " + err.Error())
@@ -321,6 +413,79 @@ func Cadprolic() {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
 
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (SELECT 
+								numlic,
+								lote,
+								item,
+								itemorc,
+								codreduz,
+								MIN(codccusto) AS codccusto,  -- Pega o menor valor de codccusto dentro do agrupamento
+								SUM(quan1) AS quan1,          -- Soma as quantidades
+								AVG(vamed1) AS vamed1,        -- Considerando que vamed1 é o mesmo valor, usando AVG para pegar um valor representativo
+								SUM(vatomed1) AS vatomed1,    -- Soma os valores totais
+								MIN(item_lc147) AS item_lc147 -- Pega o menor valor de item_lc147 dentro do agrupamento
+							FROM (
+								SELECT DISTINCT 
+									numlic,
+									lote,
+									item,
+									itemorc, 
+									itemcompramaterialid AS codreduz, 
+									codccusto, 
+									COALESCE(itemcompraquantidade, 0) AS quan1, 
+									COALESCE(itemcomprapropvalorunitario, 0) AS vamed1, 
+									COALESCE(itemcomprapropvalortotal, 0) AS vatomed1,
+									item_lc147
+								FROM (
+									SELECT
+										a.itemcomprapropfornecedorid AS codif,
+										1 AS sessao,
+										c.pedidocompraforprocessoid AS numlic,
+										TO_CHAR(d.loteordem, 'fm00000000') AS lote,
+										COALESCE(b.itemcompranumitemseq, b.itemcompraordem) AS item,
+										e.item AS itemorc,
+										e.codccusto,
+										b.itemcompramaterialid,
+										b.itemcompraquantidade,
+										a.itemcomprapropvalorunitario,
+										a.itemcomprapropvalortotal,
+										'C' AS status,
+										1 AS subem,
+										CASE 
+											WHEN itemcompratipocota IN (1, 2) THEN NULL 
+											ELSE e.item 
+										END AS item_lc147
+									FROM
+										itemcompraproposta a
+									JOIN itemcompra b ON
+										a.itemcompraid = b.itemcompraid
+										AND a.itemcompraversao = b.itemcompraversao
+									JOIN pedidocompra c ON 
+										c.pedidocompraid = b.itemcomprapedidoid 
+										AND c.pedidocompraversao = b.itemcomprapedidoversao 
+									LEFT JOIN lote d ON 
+										b.itemcompraloteid = d.loteid 
+									LEFT JOIN icadorc e ON 
+										e.pedidocompraforprocessoid = c.pedidocompraforprocessoid 
+										AND e.codreduz = b.itemcompramaterialid
+									WHERE
+										c.pedidocompraugid = $1 and itemcompraorigem <> 4
+								) AS rn 
+								--WHERE numlic = 716
+							) AS aggregated_data where codreduz is not null 
+							GROUP BY 
+								numlic, lote, item, itemorc, codreduz) as rn`, GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic(`Erro ao contar registros` + err.Error())
+	}
+	bar11 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("CADPROLIC: "),
+			decor.Percentage(),
+		),
+	)
+
 	// Consulta Auxiliar
 	cadpros := make(map[int]string)
 	aux1, err := cnx_fdb.Query(`select cadpro, codreduz from cadest`)
@@ -378,7 +543,7 @@ func Cadprolic() {
 				if err != nil {
 					panic("Erro ao conectar no banco: " + err.Error())
 				}
-				func () {
+				func() {
 					descr := "Lote " + lote.String
 					_, err = cnx_aux.Exec(`insert into cadlotelic (descr, lotelic, numlic) values (?,?,?)`, descr, lote, numlic)
 					if err != nil {
@@ -398,8 +563,8 @@ func Cadprolic() {
 		if err != nil {
 			continue
 		}
+		bar11.Increment()
 	}
-	fmt.Println("Cadprolic - Tempo de execução: ", time.Since(start))
 }
 
 func CadprolicDetalhe() {
@@ -417,8 +582,7 @@ func CadprolicDetalhe() {
 	fmt.Println("CadprolicDetalhe - Tempo de execução: ", time.Since(start))
 }
 
-func ProlicProlics() {
-	start := time.Now()
+func ProlicProlics(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		panic("Erro ao conectar no banco: " + err.Error())
@@ -457,6 +621,34 @@ func ProlicProlics() {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
 
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (select distinct
+									b.pessoaid,
+									substring(b.pessoanome,1,40) nome,
+									--1 credenciado, 2 habilitado	
+									'A' status,
+									--a.habilitacaolicsituacaofornecedor,
+									c.forprocessoid
+									--c.forprocessoano
+								from
+									habilitacaolicitante a
+								join pessoa b on
+									a.habilitacaolicfornid = b.pessoaid
+								join formalizacaoprocesso c on
+									c.forprocessoid = a.habilitacaolicforprocessoid
+									and a.habilitacaolicforprocessoversao = c.forprocessoversao
+								where
+									c.forprocessougid = $1) as rn`, GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic(`Erro ao contar registros` + err.Error())
+	}
+	bar12 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("PROLIC: "),
+			decor.Percentage(),
+		),
+	)
+
 	// Prepara Insert
 	insertProlic, err := cnx_fdb.Prepare(`insert into prolic (codif, nome, status, numlic) values (?,?,?,?)`)
 	if err != nil {
@@ -484,6 +676,7 @@ func ProlicProlics() {
 		if err != nil {
 			panic("Erro ao inserir dados: " + err.Error())
 		}
+		bar12.Increment()
 	}
 	cnx_fdb.Exec(`alter trigger TBI_CADPRO_STATUS_BLOQUEIO inactive;
 					INSERT INTO cadpro_status (numlic, sessao, itemp, item, telafinal)
@@ -497,11 +690,9 @@ func ProlicProlics() {
 	cnx_fdb.Exec(`INSERT INTO CADLIC_SESSAO (NUMLIC, SESSAO, DTREAL, HORREAL, COMP, DTENC, HORENC, SESSAOPARA, MOTIVO) 
                   SELECT L.NUMLIC, CAST(1 AS INTEGER), L.DTREAL, L.HORREAL, L.COMP, L.DTENC, L.HORENC, CAST('T' AS VARCHAR(1)), CAST('O' AS VARCHAR(1)) FROM CADLIC L 
                   WHERE numlic not in (SELECT FIRST 1 S.NUMLIC FROM CADLIC_SESSAO S WHERE S.NUMLIC = L.NUMLIC)`)
-	fmt.Println("ProlicProlics - Tempo de execução: ", time.Since(start))
 }
 
-func CadproProposta() {
-	start := time.Now()
+func CadproProposta(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		panic("Erro ao conectar no banco: " + err.Error())
@@ -575,7 +766,71 @@ func CadproProposta() {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
 
-	// Insert 
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (SELECT
+								codif,
+								sessao,
+								numlic,
+								lote,
+								item,
+								itemorc,
+								SUM(qtd) AS qtd,  -- Agregação por soma
+								itemcomprapropvalorunitario,
+								SUM(total) AS total,
+								status,
+								subem
+							FROM
+								(
+									SELECT DISTINCT
+										a.itemcomprapropfornecedorid AS codif,
+										1 AS sessao,
+										c.pedidocompraforprocessoid AS numlic,
+										TO_CHAR(d.loteordem, 'fm00000000') AS lote,
+										COALESCE(b.itemcompranumitemseq, b.itemcompraordem) AS item,
+										e.item AS itemorc,
+										b.itemcompraquantidade AS qtd,  -- Incluído no GROUP BY e SUM
+										a.itemcomprapropvalorunitario,
+										a.itemcomprapropvalortotal AS total,
+										'C' AS status,
+										1 AS subem
+									FROM
+										itemcompraproposta a
+									JOIN itemcompra b ON
+										a.itemcompraid = b.itemcompraid
+										AND a.itemcompraversao = b.itemcompraversao
+									JOIN pedidocompra c ON
+										c.pedidocompraid = b.itemcomprapedidoid
+										AND c.pedidocompraversao = b.itemcomprapedidoversao
+									LEFT JOIN lote d ON
+										b.itemcompraloteid = d.loteid
+									LEFT JOIN icadorc e ON
+										e.pedidocompraforprocessoid = c.pedidocompraforprocessoid
+										AND e.codreduz = b.itemcompramaterialid
+									WHERE
+										c.pedidocompraugid = $1
+										--AND c.pedidocompraforprocessoid = 4678
+								) AS subquery
+							GROUP BY
+								codif,
+								sessao,
+								numlic,
+								lote,
+								item,
+								itemorc,
+								itemcomprapropvalorunitario,
+								status,
+								subem) as rn`, GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic(`Erro ao contar registros` + err.Error())
+	}
+	bar13 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("CADPRO_PROPOSTA: "),
+			decor.Percentage(),
+		),
+	)
+
+	// Insert
 	insert, err := cnx_fdb.Prepare(`insert into cadpro_proposta (codif, sessao, numlic, lotelic, itemp, item, quan1, vaun1, vato1, status, subem) values (?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic("Erro ao preparar insert: " + err.Error())
@@ -593,11 +848,10 @@ func CadproProposta() {
 
 		_, err = insert.Exec(codif, sessao, numlic, lotelic, itemp, itemp, quan1, vaun1, vato1, status, subem)
 		if err != nil {
-			// panic("Erro ao inserir dados: " + err.Error())
 			continue
 		}
+		bar13.Increment()
 	}
-	fmt.Println("CadproProposta - Tempo de execução: ", time.Since(start))
 }
 
 func CadlicSessao() {
@@ -656,8 +910,8 @@ func CadproFinal() {
 
 	cnx_fdb.Exec(`delete from cadpro_final`)
 	cnx_fdb.Exec("alter table cadpro_final add CQTDADT double precision")
-    cnx_fdb.Exec("alter table cadpro_final add ccadpro varchar(20)")
-    cnx_fdb.Exec("alter table cadpro_final add CCODCCUSTO integer;")
+	cnx_fdb.Exec("alter table cadpro_final add ccadpro varchar(20)")
+	cnx_fdb.Exec("alter table cadpro_final add CCODCCUSTO integer;")
 	cnx_fdb.Exec(`EXECUTE BLOCK
                         AS
                         BEGIN	                          
@@ -848,8 +1102,7 @@ func Regpreco() {
 	fmt.Println("Regpreco - Tempo de execução: ", time.Since(start))
 }
 
-func Aditivo() {
-	start := time.Now()
+func Aditivo(p *mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		panic("Erro ao conectar no banco: " + err.Error())
@@ -886,10 +1139,41 @@ func Aditivo() {
 						aditivougid = $1 
 						and pedidocompraforprocessoid IS NOT NULL
 						--and c.pedidocompraforprocessoid = 1452
-					order by pedidocompraforprocessoid, aditivonumero, aditivoano `, GetEmpresa())
+					order by pedidocompraforprocessoid, aditivonumero, aditivoano`, GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
+
+	var count int
+	err = cnx_pg.QueryRow(`select count(*) from (select
+						aditivonumero,
+						aditivoid,
+						c.pedidocompraforprocessoid,
+						b.itemcompramaterialid,
+						b.itemcompraaditivoqtde,
+						b.itemcompraaditivovalorunitario,
+						b.itemcompraaditivovalorunitario * b.itemcompraaditivoqtde totaladt
+					from
+						aditivo a
+					join itemcompra b on
+						a.aditivoid = b.itemcompraaditivoid
+					join pedidocompra c on
+						c.pedidocompraid = b.itemcomprapedidoid
+						and c.pedidocompraversao = b.itemcomprapedidoversao
+					where
+						aditivougid = $1 
+						and pedidocompraforprocessoid IS NOT NULL
+						--and c.pedidocompraforprocessoid = 1452
+					order by pedidocompraforprocessoid, aditivonumero, aditivoano) as rn`, GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic(`Erro ao contar registros` + err.Error())
+	}
+	bar14 := p.AddBar(int64(count),
+		mpb.PrependDecorators(
+			decor.Name("ADITIVO: "),
+			decor.Percentage(),
+		),
+	)
 
 	// Prepara o update
 	updtCadpro, err := cnx_fdb.Prepare(`UPDATE CADPRO SET QTDADT = QTDADT + ?, VAUNADT = ?, VATOADT = VATOADT + ? WHERE NUMLIC = ? AND CADPRO = ?`)
@@ -936,6 +1220,6 @@ func Aditivo() {
 		} else {
 			continue
 		}
+		bar14.Increment()
 	}
-	fmt.Println("Aditivo - Tempo de execução: ", time.Since(start))
 }
