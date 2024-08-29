@@ -324,6 +324,7 @@ func Cadlic(p *mpb.Progress) {
 						END
 					END`)
 	cnx_fdb.Exec(`UPDATE CADLIC SET anomod = ano where anomod is null`)
+	cnx_fdb.Exec(`INSERT INTO MODLICANO (ULTNUMPRO, CODMOD, ANOMOD, EMPRESA) SELECT COALESCE(MAX(NUMPRO),0), CODMOD, ANOMOD, EMPRESA FROM CADLIC c WHERE CODMOD IS NOT NULL GROUP BY 2, 3, 4`)
 }
 
 func Cadprolic(p *mpb.Progress) {
@@ -1116,7 +1117,7 @@ func Aditivo(p *mpb.Progress) {
 	defer cnx_pg.Close()
 
 	// Limpando Tabela
-	cnx_fdb.Exec("update cadpro set qtdadt = quan1, vaunadt = vaun1, vatoadt = vato1")
+	cnx_fdb.Exec("update cadpro set qtdadt = quan1, vaunadt = vaun1, vatoadt = vato1, total = vato1")
 	cnx_fdb.Exec("update cadprolic_detalhe_fic set qtdadt = qtd, valoradt = valor")
 
 	// Query
@@ -1138,7 +1139,7 @@ func Aditivo(p *mpb.Progress) {
 					where
 						aditivougid = $1 
 						and pedidocompraforprocessoid IS NOT NULL
-						--and c.pedidocompraforprocessoid = 1452
+						--and c.pedidocompraforprocessoid = 1277
 					order by pedidocompraforprocessoid, aditivonumero, aditivoano`, GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
@@ -1176,7 +1177,7 @@ func Aditivo(p *mpb.Progress) {
 	)
 
 	// Prepara o update
-	updtCadpro, err := cnx_fdb.Prepare(`UPDATE CADPRO SET QTDADT = QTDADT + ?, VAUNADT = ?, VATOADT = VATOADT + ? WHERE NUMLIC = ? AND CADPRO = ?`)
+	updtCadpro, err := cnx_fdb.Prepare(`UPDATE CADPRO SET QTDADT = QTDADT + ?, VAUNADT = ?, total = total + ? WHERE NUMLIC = ? AND CADPRO = ?`)
 	if err != nil {
 		panic("Erro ao preparar update: " + err.Error())
 	}
@@ -1215,11 +1216,12 @@ func Aditivo(p *mpb.Progress) {
 		cnx_fdb.QueryRow(`select item from cadprolic_detalhe where numlic = ? and cadpro = ?`, numlic, cadpro).Scan(&item)
 
 		if item.Valid {
-			updtCadpro.Exec(qtdadt, vaunadt, vatoadt, numlic, cadpro)
+			updtCadpro.Exec(qtdadt, 1, vatoadt, numlic, cadpro)
 			updtDetalheFic.Exec(qtdadt, vatoadt, numlic, item)
 		} else {
 			continue
 		}
 		bar14.Increment()
 	}
+	cnx_fdb.Exec(`update CADPRO c SET VAUNADT = total / QTDADT, VATOADT = total WHERE QTDADT <> QUAN1`)
 }
