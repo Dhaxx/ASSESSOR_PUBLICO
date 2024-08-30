@@ -53,3 +53,42 @@ func TiposAjuste(p *mpb.Progress) {
 
 	cnx_fdb.Exec("INSERT INTO PT_CADAJUSTE (CODIGO_AJU, EMPRESA_AJU, DESCRICAO_AJU) VALUES (1, ?, 'REAVALIAÇÃO (ANTES DO CORTE)')", utils.GetEmpresa())
 }
+
+func TiposBaixa(p *mpb.Progress) {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_fdb.Close()
+
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_psq.Close()
+
+	// Limpa Tabela
+	cnx_fdb.Exec("DELETE FROM PT_CADBAI")
+
+	// Prepara insert
+
+	// Query
+	rows, err := cnx_psq.Query(`select
+						distinct(baixaoperacao) codigo_bai,
+						baixagestoraid empresa_bai,
+						case when baixaoperacao = 1 then 'ALIENAÇÃO'
+							when baixaoperacao = 2 then 'DOAÇÃO'	
+							when baixaoperacao = 3 then 'PERMUTA'	
+							when baixaoperacao = 4 then 'COMODATO'	
+							when baixaoperacao = 5 then 'FURTO/ROUBO/PERDA'	
+							when baixaoperacao = 6 then 'INSERVÍVEL/OBSOLETO'	
+							when baixaoperacao = 7 then 'OUTRAS BAIXAS'	
+						end descricao_bai
+					from
+						baixa b 
+					where baixagestoraid = $1`, utils.GetEmpresa())
+	if err != nil {
+		panic(err)
+	}
+}
