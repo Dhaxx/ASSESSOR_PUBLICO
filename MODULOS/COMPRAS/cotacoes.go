@@ -2,6 +2,7 @@ package compras
 
 import (
 	conexao "ASSESSOR_PUBLICO/CONEXAO"
+	utils "ASSESSOR_PUBLICO/MODULOS/utils"
 
 	"github.com/gobuffalo/nulls"
 	"github.com/vbauerster/mpb/v8"
@@ -110,7 +111,7 @@ func Cadorc(p *mpb.Progress) {
 		left join pessoa c on
 			a.pedidocomprasolicitanteid = c.pessoaid
 		where a.pedidocompraugid = $2
-		order by data desc`, GetEmpresa(), GetEmpresa())
+		order by data desc`, utils.GetEmpresa(), utils.GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar pedidos de compra: " + err.Error())
 	}
@@ -170,7 +171,7 @@ func Cadorc(p *mpb.Progress) {
 		left join pessoa c on
 			a.pedidocomprasolicitanteid = c.pessoaid
 		where a.pedidocompraugid = $2
-		order by data desc) as rn`, GetEmpresa(), GetEmpresa()).Scan(&count)
+		order by data desc) as rn`, utils.GetEmpresa(), utils.GetEmpresa()).Scan(&count)
 	bar6 := p.AddBar(int64(count),
 		mpb.PrependDecorators(
 			decor.Name("CADORC: "),
@@ -180,7 +181,7 @@ func Cadorc(p *mpb.Progress) {
 
 	var id_cadorc, codccusto, id_ant, numlic nulls.Int
 	var num, ano, numorc, dtorc, descr, prioridade, obs, status, liberado, liberado_tela, solicitante, numorc_ant, flg_cotacao nulls.String
-	empresa := nulls.NewInt(GetEmpresa())
+	empresa := nulls.NewInt(utils.GetEmpresa())
 
 	for rows.Next() {
 		err = rows.Scan(&id_cadorc, &num, &ano, &numorc, &dtorc, &descr, &prioridade, &obs, &status, &liberado, &codccusto, &liberado_tela, &solicitante, &numorc_ant, &flg_cotacao, &id_ant, &numlic)
@@ -286,7 +287,7 @@ func Icadorc(p *mpb.Progress) {
 									END,
 									COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
 									pedidocompracotacaoid
-								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)`,GetEmpresa())
+								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)`, utils.GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar itens de pedido de compra: " + err.Error())
 	}
@@ -334,7 +335,7 @@ func Icadorc(p *mpb.Progress) {
 									END,
 									COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
 									pedidocompracotacaoid
-								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)) as rn`, GetEmpresa()).Scan(&count)
+								order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)) as rn`, utils.GetEmpresa()).Scan(&count)
 
 	// Consulta Auxiliar
 	aux2, err := cnx_fdb.Query("select numorc, id_cadorc, flg_cotacao, id_ant from cadorc")
@@ -447,7 +448,7 @@ func Fcadorc(p *mpb.Progress) {
 								GROUP BY
 									numorc,
 									pessoaid,
-									pessoanome;`, GetEmpresa())
+									pessoanome;`, utils.GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar fornecedores: " + err.Error())
 	}
@@ -504,7 +505,7 @@ func Fcadorc(p *mpb.Progress) {
 								GROUP BY
 									numorc,
 									pessoaid,
-									pessoanome) as rn`, GetEmpresa()).Scan(&count)
+									pessoanome) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic("Falha ao contar registros: " + err.Error())
 	}
@@ -635,7 +636,7 @@ func Vcadorc(p *mpb.Progress) {
 										numorc,
 										item,
 										a.itemcompracotacaovencedora
-								) AS rn;`, GetEmpresa())
+								) AS rn;`, utils.GetEmpresa())
 	if err != nil {
 		panic("Falha ao buscar fornecedores: " + err.Error())
 	}
@@ -694,7 +695,7 @@ func Vcadorc(p *mpb.Progress) {
 									ORDER BY
 										numorc,
 										item,
-										a.itemcompracotacaovencedora) as q) as rn`, GetEmpresa()).Scan(&count)
+										a.itemcompracotacaovencedora) as q) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic("Falha ao contar registros: " + err.Error())
 	}

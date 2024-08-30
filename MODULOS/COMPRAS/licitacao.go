@@ -2,6 +2,7 @@ package compras
 
 import (
 	conexao "ASSESSOR_PUBLICO/CONEXAO"
+	utils "ASSESSOR_PUBLICO/MODULOS/utils"
 	"database/sql"
 	"fmt"
 	"time"
@@ -110,7 +111,7 @@ func Cadlic(p *mpb.Progress) {
 									ORDER BY 
 										a.forprocessoano DESC, 
 										a.forprocessonumero
-								) AS rn;`, GetEmpresa())
+								) AS rn;`, utils.GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar no banco: " + err.Error())
 	}
@@ -197,7 +198,7 @@ func Cadlic(p *mpb.Progress) {
 										forprocessougid = $1
 									ORDER BY 
 										a.forprocessoano DESC, 
-										a.forprocessonumero) AS q) as rn`, GetEmpresa()).Scan(&count)
+										a.forprocessonumero) AS q) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}
@@ -257,7 +258,7 @@ func Cadlic(p *mpb.Progress) {
 	var numpro, numero, numlic, microempresa, licnova, ano, processo, processo_ano, codmod nulls.Int
 	var comp_ant int
 	var valor nulls.Float64
-	empresa := GetEmpresa()
+	empresa := utils.GetEmpresa()
 	for rows.Next() {
 		err = rows.Scan(&numpro, &datae, &dtpub, &dtenc, &horabe, &discr, &discr7, &modlic, &dthom, &dtadj, &comp_ant, &numero, &processo_ano, &registropreco, &ctlance, &obra, &proclic, &numlic, &microempresa,
 			&licnova, &tlance, &mult_entidade, &ano, &lei_invertfasestce, &valor, &detalhe, &discr9, &codtce, &enviotce, &numorc, &processo, &processo_ano, &codmod)
@@ -409,7 +410,7 @@ func Cadprolic(p *mpb.Progress) {
 								--WHERE numlic = 716
 							) AS aggregated_data where codreduz is not null 
 							GROUP BY 
-								numlic, lote, item, itemorc, codreduz;`, GetEmpresa())
+								numlic, lote, item, itemorc, codreduz;`, utils.GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -476,7 +477,7 @@ func Cadprolic(p *mpb.Progress) {
 								--WHERE numlic = 716
 							) AS aggregated_data where codreduz is not null 
 							GROUP BY 
-								numlic, lote, item, itemorc, codreduz) as rn`, GetEmpresa()).Scan(&count)
+								numlic, lote, item, itemorc, codreduz) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}
@@ -617,7 +618,7 @@ func ProlicProlics(p *mpb.Progress) {
 									c.forprocessoid = a.habilitacaolicforprocessoid
 									and a.habilitacaolicforprocessoversao = c.forprocessoversao
 								where
-									c.forprocessougid = $1 --and c.forprocessoid = 22026`, GetEmpresa())
+									c.forprocessougid = $1 --and c.forprocessoid = 22026`, utils.GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -639,7 +640,7 @@ func ProlicProlics(p *mpb.Progress) {
 									c.forprocessoid = a.habilitacaolicforprocessoid
 									and a.habilitacaolicforprocessoversao = c.forprocessoversao
 								where
-									c.forprocessougid = $1) as rn`, GetEmpresa()).Scan(&count)
+									c.forprocessougid = $1) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}
@@ -762,7 +763,7 @@ func CadproProposta(p *mpb.Progress) {
 								itemorc,
 								itemcomprapropvalorunitario,
 								status,
-								subem;`, GetEmpresa())
+								subem;`, utils.GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -820,7 +821,7 @@ func CadproProposta(p *mpb.Progress) {
 								itemorc,
 								itemcomprapropvalorunitario,
 								status,
-								subem) as rn`, GetEmpresa()).Scan(&count)
+								subem) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}
@@ -1093,7 +1094,7 @@ func Aditivo(p *mpb.Progress) {
 						aditivougid = $1 
 						and pedidocompraforprocessoid IS NOT NULL
 						--and c.pedidocompraforprocessoid = 1277
-					order by pedidocompraforprocessoid, aditivonumero, aditivoano`, GetEmpresa())
+					order by pedidocompraforprocessoid, aditivonumero, aditivoano`, utils.GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -1118,7 +1119,7 @@ func Aditivo(p *mpb.Progress) {
 						aditivougid = $1 
 						and pedidocompraforprocessoid IS NOT NULL
 						--and c.pedidocompraforprocessoid = 1452
-					order by pedidocompraforprocessoid, aditivonumero, aditivoano) as rn`, GetEmpresa()).Scan(&count)
+					order by pedidocompraforprocessoid, aditivonumero, aditivoano) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}

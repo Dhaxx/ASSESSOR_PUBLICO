@@ -2,6 +2,7 @@ package compras
 
 import (
 	conexao "ASSESSOR_PUBLICO/CONEXAO"
+	utils "ASSESSOR_PUBLICO/MODULOS/utils"
 
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -279,7 +280,7 @@ func Cadest(p *mpb.Progress) {
 			panic("Falha ao ler resultado: " + err.Error())
 		}
 
-		subgrupoCodigo := EstourouSubgr(intCodigo, subgrupo, grupo, cnx_fdb)
+		subgrupoCodigo := utils.EstourouSubgr(intCodigo, subgrupo, grupo, cnx_fdb)
 
 		cadpro := grupo + "." + subgrupoCodigo[0] + "." + subgrupoCodigo[1]
 		subgrupo = subgrupoCodigo[0]
@@ -358,7 +359,7 @@ func Destino(p *mpb.Progress) {
 			panic("Falha ao ler resultado: " + err.Error())
 		}
 
-		empresa = GetEmpresa()
+		empresa = utils.GetEmpresa()
 
 		_, err = insert.Exec(cod, desti, empresa)
 		if err != nil {
@@ -429,7 +430,7 @@ func CentroCusto(p *mpb.Progress) {
 								from
 									unidadeorcamentaria u
 								join orgao o on u.undorcorgaoid = o.orgaoid 
-								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1`, GetEmpresa())
+								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1`, utils.GetEmpresa())
 	if err != nil {
 		panic("Falha ao executar select: " + err.Error())
 	}
@@ -452,7 +453,7 @@ func CentroCusto(p *mpb.Progress) {
 								from
 									unidadeorcamentaria u
 								join orgao o on u.undorcorgaoid = o.orgaoid 
-								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1)`, GetEmpresa()).Scan(&count)
+								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1)`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic("Falha ao contar registros: " + err.Error())
 	}
@@ -473,7 +474,7 @@ func CentroCusto(p *mpb.Progress) {
 			panic("Falha ao ler resultado: " + err.Error())
 		}
 
-		_, err = insert.Exec(poder, orgao, destino, ccusto, descr, obs, placa, codccusto, GetEmpresa(), unidade, ocultar, id_ant, cod_ant)
+		_, err = insert.Exec(poder, orgao, destino, ccusto, descr, obs, placa, codccusto, utils.GetEmpresa(), unidade, ocultar, id_ant, cod_ant)
 		if err != nil {
 			panic("Falha ao inserir dados: " + err.Error())
 		}

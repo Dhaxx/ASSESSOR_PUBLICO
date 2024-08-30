@@ -2,6 +2,7 @@ package compras
 
 import (
 	conexao "ASSESSOR_PUBLICO/CONEXAO"
+	utils "ASSESSOR_PUBLICO/MODULOS/utils"
 	"fmt"
 
 	"github.com/gobuffalo/nulls"
@@ -49,7 +50,7 @@ func Cadped(p *mpb.Progress) {
 		join icadorc b on a.autforforprocessoid = b.pedidocompraforprocessoid 
 		where
 			autforugid = $1
-		group by autforid, autforano, autfornumero, autfordataemissao, autforfornecedorid, entrou, autforugid, autforforprocessoid`, GetEmpresa())
+		group by autforid, autforano, autfornumero, autfordataemissao, autforfornecedorid, entrou, autforugid, autforforprocessoid`, utils.GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -77,7 +78,7 @@ func Cadped(p *mpb.Progress) {
 		join icadorc b on a.autforforprocessoid = b.pedidocompraforprocessoid 
 		where
 			autforugid = $1
-		group by autforid, autforano, autfornumero, autfordataemissao, autforfornecedorid, entrou, autforugid, autforforprocessoid) as rn`, GetEmpresa()).Scan(&count)
+		group by autforid, autforano, autfornumero, autfordataemissao, autforfornecedorid, entrou, autforugid, autforforprocessoid) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}
@@ -134,7 +135,6 @@ func Icadped(p *mpb.Progress) {
 			UPDATE REGPRECO SET QTDENT = 0, VATOENT = 0;
 			UPDATE CADPROLIC_DETALHE_FIC SET QTD = 0, VALORPED = 0;
 		END`)
-					
 
 	// Query
 	rows, err := cnx_pg.Query(`select
@@ -354,7 +354,7 @@ func Requi(p *mpb.Progress) {
 			left join historicopadrao b on
 				a.movdochistoricopadraoid = b.historicopadraoid
 			where
-				movdocgestoraid = $1) as rn`, GetEmpresa())
+				movdocgestoraid = $1) as rn`, utils.GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -418,7 +418,7 @@ func Requi(p *mpb.Progress) {
 			left join historicopadrao b on
 				a.movdochistoricopadraoid = b.historicopadraoid
 			where
-				movdocgestoraid = $1) as rn) as rn`, GetEmpresa()).Scan(&count)
+				movdocgestoraid = $1) as rn) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}
@@ -530,7 +530,7 @@ func Icadreq(p *mpb.Progress) {
 		join movdoc b on
 			a.movdocid = b.movdocid
 		where
-			movdocitemgestoraid = $1`, GetEmpresa())
+			movdocitemgestoraid = $1`, utils.GetEmpresa())
 	if err != nil {
 		panic("Erro ao consultar dados: " + err.Error())
 	}
@@ -567,7 +567,7 @@ func Icadreq(p *mpb.Progress) {
 		join movdoc b on
 			a.movdocid = b.movdocid
 		where
-			movdocitemgestoraid = $1) as rn`, GetEmpresa()).Scan(&count)
+			movdocitemgestoraid = $1) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}
@@ -616,7 +616,7 @@ func Icadreq(p *mpb.Progress) {
 		}
 
 		cadpro = cadpros[codreduz]
-		
+
 		if tipo_req.String == "DE" || tipo_req.String == "E" {
 			quan1 = qtd
 			vaun1 = prcunt

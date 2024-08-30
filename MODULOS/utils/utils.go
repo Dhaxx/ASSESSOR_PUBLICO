@@ -1,4 +1,4 @@
-package compras
+package utils
 
 import (
 	"ASSESSOR_PUBLICO/CONEXAO"

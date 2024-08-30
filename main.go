@@ -1,7 +1,7 @@
 package main
 
 import (
-	"ASSESSOR_PUBLICO/COMPRAS"
+	"ASSESSOR_PUBLICO/MODULOS/COMPRAS"
 	"sync"
 
 	"github.com/vbauerster/mpb/v8"
