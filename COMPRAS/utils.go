@@ -64,3 +64,16 @@ func GetEmpresa() int {
 
 	return empresa
 }
+
+func CriaFornConversao() {
+	cnx_aux, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Falha ao conectar com o banco de destino: " + err.Error())
+	}
+	defer cnx_aux.Close()
+
+	_, err = cnx_aux.Exec(`insert into desfor (codif, nome) select max(codif)+1, 'CONVERSÃO' from DESFOR`)
+	if err != nil {
+		panic("Falha ao executar insert: " + err.Error())
+	}
+}

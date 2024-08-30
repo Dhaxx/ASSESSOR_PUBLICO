@@ -2,7 +2,7 @@ package main
 
 import (
 	"ASSESSOR_PUBLICO/COMPRAS"
-	// "sync"
+	"sync"
 
 	"github.com/vbauerster/mpb/v8"
 )
@@ -16,9 +16,10 @@ func main() {
     // var wg6 sync.WaitGroup
     // var wg7 sync.WaitGroup
 	// var wg8 sync.WaitGroup
+	var wg9 sync.WaitGroup
 	p := mpb.New()
     
-//////////////////////
+////////////////////
 	// wg1.Add(4)
     // go func() {
     //     defer wg1.Done()
@@ -111,16 +112,29 @@ func main() {
 	// wg7.Wait()
 
 	// compras.Regpreco()
-	// wg8.Add(2)
+	// wg8.Add(3)
 	// go func() {
 	// 	defer wg8.Done()
-		compras.Aditivo(p)
+	// 	compras.Aditivo(p)
 	// }()
 	// go func() {
 	// 	defer wg8.Done()
 	// 	compras.Cadped(p)
 	// }()
+	// go func() {
+	// 	defer wg8.Done()
+	// 	compras.Requi(p)
+	// }()
 	// wg8.Wait()
 
-	// compras.Icadped(p)
+	wg9.Add(2)
+	go func() {
+		defer wg9.Done()
+		compras.Icadped(p)
+	}()
+	go func() {
+		defer wg9.Done()
+		compras.Icadreq(p)
+	}()
+	wg9.Wait()
 }

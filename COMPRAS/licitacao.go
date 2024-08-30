@@ -1017,57 +1017,10 @@ func Cadpro() {
 						AND cp.ITEM = c.ITEM 
 						AND cp.CODIF = a.CODIF
 					);`)
-	cnx_fdb.Exec(`MERGE INTO cadprolic_detalhe_fic AS target
-		USING (
-			SELECT 
-				c.numlic,
-				c.item,
-				'0' AS codigo,
-				c.quan1 AS qtd,
-				c.vato1 AS valor,
-				c.qtdadt,
-				c.vatoadt,
-				c.codccusto,
-				c.quan1 AS qtdmed,
-				c.vato1 AS valormed,
-				'C' AS tipo
-			FROM cadpro c
-			WHERE c.numlic IN (
-				SELECT numlic 
-				FROM cadlic 
-				WHERE liberacompra = 'S'
-			)
-			AND c.subem = 1
-		) AS source
-		ON target.numlic = source.numlic
-		AND target.item = source.item
-		WHEN NOT MATCHED THEN
-			INSERT (
-				numlic,
-				item,
-				codigo,
-				qtd,
-				valor,
-				qtdadt,
-				valoradt,
-				codccusto,
-				qtdmed,
-				valormed,
-				tipo
-			)
-			VALUES (
-				source.numlic,
-				source.item,
-				source.codigo,
-				source.qtd,
-				source.valor,
-				source.qtdadt,
-				source.valoradt,
-				source.codccusto,
-				source.qtdmed,
-				source.valormed,
-				source.tipo
-			);`)
+	cnx_fdb.Exec(`insert into cadprolic_detalhe_fic (numlic, item, codigo, qtd, valor, qtdadt, valoradt, codccusto, qtdmed, valormed, tipo) 
+                    select numlic, item, '0', sum(quan1) qtd, sum(vato1) valor, sum(qtdadt) qtdadt, sum(vatoadt) valoradt, codccusto, sum(quan1) qtdmed, sum(vato1) valormed, 'C' from cadpro where numlic in 
+                    (select numlic from cadlic where liberacompra='S') and subem = 1
+                    GROUP BY numlic, item, codccusto`)
 	fmt.Println("Cadpro - Tempo de execução: ", time.Since(start))
 }
 
