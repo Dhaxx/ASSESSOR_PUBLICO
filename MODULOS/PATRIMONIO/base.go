@@ -15,6 +15,9 @@ func TipoMov(p *mpb.Progress) {
 	}
 	defer cnx_fdb.Close()
 
+	// Limpa Tabela
+	cnx_fdb.Exec("DELETE FROM PT_TIPOMOV")
+
 	valores := make(map[string]string)
 
 	valores["A"] = "AQUISIÇÃO"
@@ -23,7 +26,7 @@ func TipoMov(p *mpb.Progress) {
 	valores["R"] = "PR. CONTÁBIL"
 	valores["P"] = "TRANS. PLANO"
 
-	bar19 := p.AddSpinner(1,
+	bar19 := p.AddBar(1,
 		mpb.PrependDecorators(
 			decor.Name("PT_TIPOMOV: "),
 		),
@@ -33,7 +36,7 @@ func TipoMov(p *mpb.Progress) {
 	)
 
 	for sigla, valor := range valores {
-		_, err := cnx_fdb.Exec("INSERT INTO PT_TIPOMOV (SIGLA, VALOR) VALUES (?, ?)", sigla, valor)
+		_, err := cnx_fdb.Exec("INSERT INTO PT_TIPOMOV (codigo_tmv, descricao_tmv) VALUES (?, ?)", sigla, valor)
 		if err != nil {
 			panic(err)
 		}
@@ -51,7 +54,13 @@ func TiposAjuste(p *mpb.Progress) {
 	// Limpa Tabela
 	cnx_fdb.Exec("DELETE FROM PT_CADAJUSTE")
 
+	bar20 := p.AddBar(1, mpb.PrependDecorators(
+		decor.Name("PT_CADAJUSTE: "),
+		), mpb.AppendDecorators(
+		decor.Percentage(),
+	))
 	cnx_fdb.Exec("INSERT INTO PT_CADAJUSTE (CODIGO_AJU, EMPRESA_AJU, DESCRICAO_AJU) VALUES (1, ?, 'REAVALIAÇÃO (ANTES DO CORTE)')", utils.GetEmpresa())
+	bar20.Increment()
 }
 
 func TiposBaixa(p *mpb.Progress) {
@@ -76,7 +85,6 @@ func TiposBaixa(p *mpb.Progress) {
 	// Query
 	rows, err := cnx_psq.Query(`select
 						distinct(baixaoperacao) codigo_bai,
-						baixagestoraid empresa_bai,
 						case when baixaoperacao = 1 then 'ALIENAÇÃO'
 							when baixaoperacao = 2 then 'DOAÇÃO'	
 							when baixaoperacao = 3 then 'PERMUTA'	
@@ -86,9 +94,318 @@ func TiposBaixa(p *mpb.Progress) {
 							when baixaoperacao = 7 then 'OUTRAS BAIXAS'	
 						end descricao_bai
 					from
-						baixa b 
-					where baixagestoraid = $1`, utils.GetEmpresa())
+						baixa b`)
 	if err != nil {
 		panic(err)
 	}
+
+	bar21 := p.AddBar(1, mpb.PrependDecorators(
+		decor.Name("PT_CADBAI: "),
+		), mpb.AppendDecorators(
+		decor.Percentage(),
+	))
+
+	for rows.Next() {
+		var codigo_bai int
+		var descricao_bai string
+
+		err = rows.Scan(&codigo_bai, &descricao_bai)
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = cnx_fdb.Exec("INSERT INTO PT_CADBAI (CODIGO_BAI, EMPRESA_BAI, DESCRICAO_BAI) VALUES (?, ?, ?)", codigo_bai, utils.GetEmpresa(), descricao_bai)
+		if err != nil {
+			panic(err)
+		}
+	}
+	bar21.Increment()
+}
+
+func TiposSituacao(p *mpb.Progress) {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_fdb.Close()
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_psq.Close()
+
+	// Limpa Tabela
+	cnx_fdb.Exec("DELETE FROM PT_CADSIT")
+
+	// Prepara insert
+	cnx_fdb.Exec("INSERT INTO PT_CADSIT (CODIGO_SIT, EMPRESA_SIT, DESCRICAO_SIT) VALUES (?, ?, ?)", utils.GetEmpresa())
+
+	// Query
+	rows, err := cnx_psq.Query(`select
+		distinct(incorporacaosituacao) codigo_sit, 
+		case
+		when incorporacaosituacao = 1 then 'Novo'
+		when incorporacaosituacao = 2 then 'Bom'
+		when incorporacaosituacao = 3 then 'Ruim'
+		when incorporacaosituacao = 4 then 'Péssimo' end descricao_sit
+		from
+			incorporacao i`)
+	if err != nil {
+		panic(err)
+	}
+
+	bar22 := p.AddBar(1, mpb.PrependDecorators(
+		decor.Name("PT_CADSIT: "),
+		), mpb.AppendDecorators(
+		decor.Percentage(),
+	))
+
+	for rows.Next() {
+		var codigo_sit int
+		var descricao_sit string
+
+		err = rows.Scan(&codigo_sit, &descricao_sit)
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = cnx_fdb.Exec("INSERT INTO PT_CADSIT (CODIGO_SIT, EMPRESA_SIT, DESCRICAO_SIT) VALUES (?, ?, ?)", codigo_sit, utils.GetEmpresa(), descricao_sit)
+		if err != nil {
+			panic(err)
+		}
+	}
+	bar22.Increment()
+}
+
+func TiposBens(p *mpb.Progress) {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_fdb.Close()
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_psq.Close()
+
+	// Limpa Tabela
+	cnx_fdb.Exec("DELETE FROM PT_CADTIP")
+
+	// Cria Coluna
+	cnx_fdb.Exec("ALTER TABLE PT_CADTIP ADD cod_ant integer")
+
+	// Prepara insert
+	insert, err := cnx_fdb.Prepare("INSERT INTO PT_CADTIP (CODIGO_TIP, EMPRESA_TIP, DESCRICAO_TIP, CODIGO_TCE_TIP, OCULTAR_TIP, cod_ant) VALUES (?, ?, ?, ?, 'N', ?)")
+	if err != nil {
+		panic("Erro ao Prepara Insert: "+err.Error())
+	}
+
+	// Query
+	rows, err := cnx_psq.Query(`SELECT
+			row_number() OVER (ORDER BY contacontabilid) AS row_num,
+			contacontabilid,
+			LEFT(descricao, 60) AS descricao,
+			codigo_tce
+		FROM
+			(
+				SELECT DISTINCT
+					b.contacontabilid,
+					REPLACE(b.contacontabildescricao, '(P)', '') AS descricao,
+					CAST(REPLACE(b.contacontabilcodigoniveltce, '.', '') AS INTEGER) AS codigo_tce
+				FROM
+					incorporacao a
+				JOIN
+					contacontabil b ON a.incorpcontacontabilid = b.contacontabilid
+			) AS rn;`)
+	if err != nil {
+		panic(err)
+	}
+
+	bar23 := p.AddBar(1, mpb.PrependDecorators(
+		decor.Name("PT_CADTIP: "),
+		), mpb.AppendDecorators(
+		decor.Percentage(),
+	))
+	
+	for rows.Next() {
+		var descricao string
+		var codigo, cod_ant, codigo_tce int
+		err = rows.Scan(&codigo, &cod_ant, &descricao, &codigo_tce)
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = insert.Exec(codigo, utils.GetEmpresa(), descricao, codigo_tce, cod_ant)
+		if err != nil {
+			panic(err)
+		}
+	}
+	bar23.Increment()
+}
+
+func Unidades(p*mpb.Progress) {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_fdb.Close()
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_psq.Close()
+
+	// Limpa Tabela
+	tx, err := cnx_fdb.Begin()
+	if err != nil {
+		panic(err)
+	}
+	tx.Exec("DELETE FROM PT_CADPATS")
+	tx.Exec("DELETE FROM PT_CADPATD")
+	tx.Commit()
+
+	// Query
+	rows, err := cnx_psq.Query(`WITH MaxUndorcid AS (
+			SELECT
+				a.incorporacaodestinoid,
+				MAX(b.undorcid) AS undorcid
+			FROM
+				incorporacao a
+			JOIN unidadeorcamentaria b ON
+				a.incorpundorcid = b.undorcid
+			GROUP BY
+				a.incorporacaodestinoid
+		)
+		SELECT
+			DISTINCT 
+			b.undorcid,
+			b.undorcdescricao,
+			a.incorporacaodestinoid,
+			c.destinodescricao,
+			CASE
+				WHEN c.destinosituacao = 'A' THEN 'N'
+				ELSE 'S'
+			END AS ocultar
+		FROM
+			incorporacao a
+		JOIN unidadeorcamentaria b ON
+			a.incorpundorcid = b.undorcid
+		JOIN destino c ON
+			c.destinoid = a.incorporacaodestinoid
+		JOIN orgao d ON
+			d.orgaoid = b.undorcorgaoid
+		JOIN MaxUndorcid mu ON
+			a.incorporacaodestinoid = mu.incorporacaodestinoid
+			AND b.undorcid = mu.undorcid
+		WHERE
+			CAST(d.orgaocodigo AS integer) = $1;`, utils.GetEmpresa())
+	if err != nil {
+		panic(err)
+	}
+
+	// Prepara insert
+	insertSub, err := cnx_fdb.Prepare("insert into pt_cadpats (codigo_set, empresa_set, codigo_des_set, noset_set, ocultar_set) values (?, ?, ?, ?, ?)")
+	if err != nil {
+		panic(err)
+	}
+
+	bar24 := p.AddBar(1, mpb.PrependDecorators(
+		decor.Name("PT_CADPATS: "),
+		), mpb.AppendDecorators(
+		decor.Percentage(),
+	))
+
+	unidades := []int{}
+
+	for rows.Next() {
+		var codigo_des, codigo_set int
+		var nauni_des, noset_set, ocultar_des string
+		err = rows.Scan(&codigo_des, &nauni_des, &codigo_set, &noset_set, &ocultar_des)
+		if err != nil {
+			panic(err)
+		}
+
+		if !(utils.Contains(unidades, codigo_des)) {
+			cnx_aux, err := conexao.ConexaoDestino()
+			if err != nil {
+				panic(err)
+			}
+			insertUnidade, err := cnx_aux.Prepare("INSERT INTO PT_CADPATD (codigo_des, empresa_des, nauni_des, ocultar_des) VALUES (?, ?, ?, ?)")
+			if err != nil {
+				panic(err)
+			}
+			_, err = insertUnidade.Exec(codigo_des, utils.GetEmpresa(), nauni_des, ocultar_des)
+			if err != nil {
+				panic(err)
+			}
+			unidades = append(unidades, codigo_des)
+			cnx_aux.Close()
+		}
+
+		_, err = insertSub.Exec(codigo_set, utils.GetEmpresa(), codigo_des, noset_set, ocultar_des)
+		if err != nil {
+			println(err.Error())
+		}
+	}
+	bar24.Increment()
+}	
+
+func Grupos(p *mpb.Progress) {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic(err)
+	}
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic(err)
+	}
+
+	// Limpa Tabela
+	cnx_fdb.Exec("DELETE FROM PT_CADPATG")
+
+	// Query 
+	rows, err := cnx_psq.Query(`select distinct 
+		incorporacaonatureza,
+		case
+			when incorporacaonatureza = 1 then 'Móveis'
+			when incorporacaonatureza = 2 then 'Imóveis'
+			when incorporacaonatureza = 3 then 'Intangível'
+			else 'Geral'
+		end nogru_gru
+		from
+			incorporacao a`)
+	if err != nil {
+		panic(err)
+	}
+
+	// Prepara insert
+	insert, err := cnx_fdb.Prepare("INSERT INTO PT_CADPATG (CODIGO_GRU, EMPRESA_GRU, NOGRU_GRU) VALUES (?, ?, ?)")
+	if err != nil {
+		panic(err)
+	}
+
+	bar25 := p.AddBar(1, mpb.PrependDecorators(
+		decor.Name("PT_CADPATG: "),
+		), mpb.AppendDecorators(
+		decor.Percentage(),
+	))
+
+	for rows.Next() {
+		var codigo, descricao string
+		err = rows.Scan(&codigo, &descricao)
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = insert.Exec(codigo, utils.GetEmpresa(), descricao)
+		if err != nil {
+			panic(err)
+		}
+	}
+	bar25.Increment()
 }

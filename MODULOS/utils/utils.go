@@ -77,3 +77,12 @@ func CriaFornConversao() {
 		panic("Falha ao executar insert: " + err.Error())
 	}
 }
+
+func Contains(slice []int, value int) bool {
+    for _, v := range slice {
+        if v == value {
+            return true
+        }
+    }
+    return false
+}
