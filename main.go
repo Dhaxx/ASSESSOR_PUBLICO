@@ -3,7 +3,7 @@ package main
 import (
 	// compras "ASSESSOR_PUBLICO/MODULOS/COMPRAS"
 	patrimonio "ASSESSOR_PUBLICO/MODULOS/PATRIMONIO"
-	"sync"
+	// "sync"
 
 	"github.com/vbauerster/mpb/v8"
 )
@@ -18,7 +18,7 @@ func main() {
     // var wg7 sync.WaitGroup
 	// var wg8 sync.WaitGroup
 	// var wg9 sync.WaitGroup
-	var wg10 sync.WaitGroup
+	// var wg10 sync.WaitGroup
 	p := mpb.New()
     
 ////////////////////
@@ -140,34 +140,37 @@ func main() {
 	// }()
 	// wg9.Wait()
 
-	wg10.Add(7)
-	go func() {
-		defer wg10.Done()
-		patrimonio.TipoMov(p)
-	}()
-	go func() {
-		defer wg10.Done()
-		patrimonio.TiposAjuste(p)
-	}()
-	go func() {
-		defer wg10.Done()
-		patrimonio.TiposBaixa(p)
-	}()
-	go func() {
-		defer wg10.Done()
-		patrimonio.TiposSituacao(p)
-	}()
-	go func() {
-		defer wg10.Done()
-		patrimonio.TiposBens(p)
-	}()
-	go func() {
-		defer wg10.Done()
-		patrimonio.Grupos(p)
-	}()
-	go func() {
-		defer wg10.Done()
-		patrimonio.Unidades(p)
-	}()
-	wg10.Wait()
+	// wg10.Add(7)
+	// go func() {
+	// 	defer wg10.Done()
+	// 	patrimonio.TipoMov(p)
+	// }()
+	// go func() {
+	// 	defer wg10.Done()
+	// 	patrimonio.TiposAjuste(p)
+	// }()
+	// go func() {
+	// 	defer wg10.Done()
+	// 	patrimonio.TiposBaixa(p)
+	// }()
+	// go func() {
+	// 	defer wg10.Done()
+	// 	patrimonio.TiposSituacao(p)
+	// }()
+	// go func() {
+	// 	defer wg10.Done()
+	// 	patrimonio.TiposBens(p)
+	// }()
+	// go func() {
+	// 	defer wg10.Done()
+	// 	patrimonio.Grupos(p)
+	// }()
+	// go func() {
+	// 	defer wg10.Done()
+	// 	patrimonio.Unidades(p)
+	// }()
+	// wg10.Wait()
+
+	// patrimonio.PtCadpat(p)
+	patrimonio.Aquisicoes(p)
 }

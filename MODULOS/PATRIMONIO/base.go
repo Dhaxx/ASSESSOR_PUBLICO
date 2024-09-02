@@ -198,14 +198,13 @@ func TiposBens(p *mpb.Progress) {
 	cnx_fdb.Exec("ALTER TABLE PT_CADTIP ADD cod_ant integer")
 
 	// Prepara insert
-	insert, err := cnx_fdb.Prepare("INSERT INTO PT_CADTIP (CODIGO_TIP, EMPRESA_TIP, DESCRICAO_TIP, CODIGO_TCE_TIP, OCULTAR_TIP, cod_ant) VALUES (?, ?, ?, ?, 'N', ?)")
+	insert, err := cnx_fdb.Prepare("INSERT INTO PT_CADTIP (CODIGO_TIP, EMPRESA_TIP, DESCRICAO_TIP, CODIGO_TCE_TIP, OCULTAR_TIP) VALUES (?, ?, ?, ?, 'N')")
 	if err != nil {
 		panic("Erro ao Prepara Insert: "+err.Error())
 	}
 
 	// Query
 	rows, err := cnx_psq.Query(`SELECT
-			row_number() OVER (ORDER BY contacontabilid) AS row_num,
 			contacontabilid,
 			LEFT(descricao, 60) AS descricao,
 			codigo_tce
@@ -232,13 +231,13 @@ func TiposBens(p *mpb.Progress) {
 	
 	for rows.Next() {
 		var descricao string
-		var codigo, cod_ant, codigo_tce int
-		err = rows.Scan(&codigo, &cod_ant, &descricao, &codigo_tce)
+		var codigo, codigo_tce int
+		err = rows.Scan(&codigo, &descricao, &codigo_tce)
 		if err != nil {
 			panic(err)
 		}
 
-		_, err = insert.Exec(codigo, utils.GetEmpresa(), descricao, codigo_tce, cod_ant)
+		_, err = insert.Exec(codigo, utils.GetEmpresa(), descricao, codigo_tce)
 		if err != nil {
 			panic(err)
 		}
@@ -268,47 +267,47 @@ func Unidades(p*mpb.Progress) {
 	tx.Exec("DELETE FROM PT_CADPATD")
 	tx.Commit()
 
+	// Cria Campos 
+	cnx_fdb.Exec("ALTER TABLE PT_CADPATS ADD subunid_ant integer")
+
 	// Query
-	rows, err := cnx_psq.Query(`WITH MaxUndorcid AS (
+	rows, err := cnx_psq.Query(`WITH UniqueRecords AS (
 			SELECT
+				DISTINCT
+				b.undorcid,
+				b.undorcdescricao,
 				a.incorporacaodestinoid,
-				MAX(b.undorcid) AS undorcid
+				c.destinodescricao,
+				CASE
+					WHEN c.destinosituacao = 'A' THEN 'N'
+					ELSE 'S'
+				END AS ocultar
 			FROM
 				incorporacao a
 			JOIN unidadeorcamentaria b ON
 				a.incorpundorcid = b.undorcid
-			GROUP BY
-				a.incorporacaodestinoid
+			JOIN destino c ON
+				c.destinoid = a.incorporacaodestinoid
+			JOIN orgao d ON
+				d.orgaoid = b.undorcorgaoid
+			WHERE
+				CAST(d.orgaocodigo AS integer) = $1
 		)
 		SELECT
-			DISTINCT 
-			b.undorcid,
-			b.undorcdescricao,
-			a.incorporacaodestinoid,
-			c.destinodescricao,
-			CASE
-				WHEN c.destinosituacao = 'A' THEN 'N'
-				ELSE 'S'
-			END AS ocultar
+			undorcid,
+			undorcdescricao,
+			ROW_NUMBER() OVER (ORDER BY undorcid, incorporacaodestinoid, destinodescricao) AS "codigo_set",
+			incorporacaodestinoid,
+			destinodescricao,
+			ocultar
 		FROM
-			incorporacao a
-		JOIN unidadeorcamentaria b ON
-			a.incorpundorcid = b.undorcid
-		JOIN destino c ON
-			c.destinoid = a.incorporacaodestinoid
-		JOIN orgao d ON
-			d.orgaoid = b.undorcorgaoid
-		JOIN MaxUndorcid mu ON
-			a.incorporacaodestinoid = mu.incorporacaodestinoid
-			AND b.undorcid = mu.undorcid
-		WHERE
-			CAST(d.orgaocodigo AS integer) = $1;`, utils.GetEmpresa())
+			UniqueRecords;`, utils.GetEmpresa())
 	if err != nil {
 		panic(err)
 	}
 
 	// Prepara insert
-	insertSub, err := cnx_fdb.Prepare("insert into pt_cadpats (codigo_set, empresa_set, codigo_des_set, noset_set, ocultar_set) values (?, ?, ?, ?, ?)")
+	insertSub, err := cnx_fdb.Prepare("insert into pt_cadpats (codigo_set, empresa_set, codigo_des_set, noset_set, ocultar_set, subunid_ant) values (?,?,?,?,?,?)")
 	if err != nil {
 		panic(err)
 	}
@@ -322,9 +321,9 @@ func Unidades(p*mpb.Progress) {
 	unidades := []int{}
 
 	for rows.Next() {
-		var codigo_des, codigo_set int
+		var codigo_des, codigo_set, subunid_ant int
 		var nauni_des, noset_set, ocultar_des string
-		err = rows.Scan(&codigo_des, &nauni_des, &codigo_set, &noset_set, &ocultar_des)
+		err = rows.Scan(&codigo_des, &nauni_des, &codigo_set, &subunid_ant, &noset_set, &ocultar_des)
 		if err != nil {
 			panic(err)
 		}
@@ -346,7 +345,7 @@ func Unidades(p*mpb.Progress) {
 			cnx_aux.Close()
 		}
 
-		_, err = insertSub.Exec(codigo_set, utils.GetEmpresa(), codigo_des, noset_set, ocultar_des)
+		_, err = insertSub.Exec(codigo_set, utils.GetEmpresa(), codigo_des, noset_set, ocultar_des, subunid_ant)
 		if err != nil {
 			println(err.Error())
 		}
