@@ -172,6 +172,9 @@ func Cadorc(p *mpb.Progress) {
 			a.pedidocomprasolicitanteid = c.pessoaid
 		where a.pedidocompraugid = $2
 		order by data desc) as rn`, utils.GetEmpresa(), utils.GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic("Falha ao contar pedidos de compra: " + err.Error())
+	}
 	bar6 := p.AddBar(int64(count),
 		mpb.PrependDecorators(
 			decor.Name("CADORC: "),

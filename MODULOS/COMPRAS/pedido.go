@@ -93,7 +93,7 @@ func Cadped(p *mpb.Progress) {
 	)
 
 	// Prepara Insert
-	insert, err := cnx_fdb.Prepare(`insert into cadped (numped, num, ano, datped, codif, entrou, id_cadped, empresa, numlic, obs, numpedant, codccusto) values (?,?,?,?,?,?,?,?,?,?,?,?)`)
+	insert, err := cnx_fdb.Prepare(`insert into cadped (numped, num, ano, datped, codif, entrou, id_cadped, empresa, numlic, obs, numpedant, codccusto, codatualizacao_rp) values (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic("Erro ao inserir dados: " + err.Error())
 	}
@@ -106,7 +106,7 @@ func Cadped(p *mpb.Progress) {
 			panic("Erro ao ler dados: " + err.Error())
 		}
 
-		_, err = insert.Exec(numped, num, ano, datped, codif, entrou, id_cadped, empresa, numlic, obs, numpedant, codccusto)
+		_, err = insert.Exec(numped, num, ano, datped, codif, entrou, id_cadped, empresa, numlic, obs, numpedant, codccusto, 0)
 		if err != nil {
 			panic("Erro ao inserir dados: " + err.Error())
 		}
@@ -453,8 +453,9 @@ func Requi(p *mpb.Progress) {
 			obs,
 			codif,
 			docum,
-			tipo_req)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+			tipo_req,
+			dtpag)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic("Erro ao inserir dados: " + err.Error())
 	}
@@ -462,7 +463,7 @@ func Requi(p *mpb.Progress) {
 	for rows.Next() {
 		var empresa, id_requi, ano, codccusto, comp, codif, docum nulls.Int
 		var requi, num, almoxarifado, tipo_req, tiposaida, tprequi, obs, entr, said nulls.String
-		var datae, dtlan nulls.Time
+		var datae, dtlan, dtpag nulls.Time
 		err = rows.Scan(&empresa, &id_requi, &requi, &num, &ano, &almoxarifado, &codccusto, &datae, &dtlan, &tipo_req, &comp, &tiposaida, &tprequi, &obs, &codif, &docum)
 		if err != nil {
 			panic("Erro ao ler dados: " + err.Error())
@@ -470,11 +471,13 @@ func Requi(p *mpb.Progress) {
 
 		if tipo_req.String == "DE" || tipo_req.String == "E" {
 			entr = nulls.NewString("S")
+			datae = dtlan
 		} else if tipo_req.String == "DS" || tipo_req.String == "S" {
 			said = nulls.NewString("S")
+			dtpag = dtlan
 		}
 
-		_, err = insert.Exec(empresa, id_requi, requi, num, ano, almoxarifado, codccusto, datae, dtlan, entr, said, comp, tiposaida, tprequi, obs, codif, docum, tipo_req)
+		_, err = insert.Exec(empresa, id_requi, requi, num, ano, almoxarifado, codccusto, datae, dtlan, entr, said, comp, tiposaida, tprequi, obs, codif, docum, tipo_req, dtpag)
 		if err != nil {
 			panic("Erro ao inserir dados: " + err.Error())
 		}

@@ -245,7 +245,64 @@ func TiposBens(p *mpb.Progress) {
 	bar23.Increment()
 }
 
-func Unidades(p*mpb.Progress) {
+func Unidades(p *mpb.Progress) {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_fdb.Close()
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic(err)
+	}
+	defer cnx_psq.Close()
+
+	// Limpa Tabela
+	cnx_fdb.Exec("DELETE FROM PT_CADPATS")
+	cnx_fdb.Exec("DELETE FROM PT_CADPATD")
+
+	// Query
+	rows, err := cnx_psq.Query(`SELECT undorcid, cast(substring(undorccodigo, 1, 2) as integer) empresa, undorcdescricao, case when undorcsituacao = 'A' then 'N' else 'S' end ocultar FROM public.unidadeorcamentaria x 
+								where cast(substring(undorccodigo, 1, 2) as integer) = $1`,  utils.GetEmpresa())
+	if err != nil {
+		panic(err)
+	}
+
+	// Prepara insert
+	insert, err := cnx_fdb.Prepare("INSERT INTO PT_CADPATD (codigo_des, empresa_des, nauni_des, ocultar_des) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		panic(err)
+	}
+
+	var count int
+	err = cnx_psq.QueryRow("SELECT COUNT(*) FROM public.unidadeorcamentaria x where cast(substring(undorccodigo, 1, 2) as integer) = $1", utils.GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic(err)
+	}
+
+	bar24 := p.AddBar(int64(count), mpb.PrependDecorators(
+		decor.Name("PT_CADPATD: "),
+	), mpb.AppendDecorators(
+		decor.Percentage(),
+	))
+
+	for rows.Next() {
+		var codigo, empresa, descricao, ocultar string
+		err = rows.Scan(&codigo, &empresa, &descricao, &ocultar)
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = insert.Exec(codigo, empresa, descricao, ocultar)
+		if err != nil {
+			panic(err)
+		}
+		bar24.Increment()
+	}
+}
+
+func Subunidade(p*mpb.Progress) {
 	cnx_fdb, err := conexao.ConexaoDestino()
 	if err != nil {
 		panic(err)
@@ -312,13 +369,11 @@ func Unidades(p*mpb.Progress) {
 		panic(err)
 	}
 
-	bar24 := p.AddBar(1, mpb.PrependDecorators(
+	bar29 := p.AddBar(1, mpb.PrependDecorators(
 		decor.Name("PT_CADPATS: "),
 		), mpb.AppendDecorators(
 		decor.Percentage(),
 	))
-
-	unidades := []int{}
 
 	for rows.Next() {
 		var codigo_des, codigo_set, subunid_ant int
@@ -328,29 +383,12 @@ func Unidades(p*mpb.Progress) {
 			panic(err)
 		}
 
-		if !(utils.Contains(unidades, codigo_des)) {
-			cnx_aux, err := conexao.ConexaoDestino()
-			if err != nil {
-				panic(err)
-			}
-			insertUnidade, err := cnx_aux.Prepare("INSERT INTO PT_CADPATD (codigo_des, empresa_des, nauni_des, ocultar_des) VALUES (?, ?, ?, ?)")
-			if err != nil {
-				panic(err)
-			}
-			_, err = insertUnidade.Exec(codigo_des, utils.GetEmpresa(), nauni_des, ocultar_des)
-			if err != nil {
-				panic(err)
-			}
-			unidades = append(unidades, codigo_des)
-			cnx_aux.Close()
-		}
-
 		_, err = insertSub.Exec(codigo_set, utils.GetEmpresa(), codigo_des, noset_set, ocultar_des, subunid_ant)
 		if err != nil {
 			println(err.Error())
 		}
 	}
-	bar24.Increment()
+	bar29.Increment()
 }	
 
 func Grupos(p *mpb.Progress) {

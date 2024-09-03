@@ -3,6 +3,7 @@ package main
 import (
 	// compras "ASSESSOR_PUBLICO/MODULOS/COMPRAS"
 	patrimonio "ASSESSOR_PUBLICO/MODULOS/PATRIMONIO"
+	utils "ASSESSOR_PUBLICO/MODULOS/utils"
 	// "sync"
 
 	"github.com/vbauerster/mpb/v8"
@@ -170,7 +171,12 @@ func main() {
 	// 	patrimonio.Unidades(p)
 	// }()
 	// wg10.Wait()
-
+	
+	// patrimonio.Subunidade(p)
 	// patrimonio.PtCadpat(p)
 	patrimonio.Aquisicoes(p)
+	patrimonio.Transferencias(p)
+	patrimonio.Baixas(p)
+	patrimonio.Reavaliacao(p)
+	utils.AtualizaCadpat()
 }

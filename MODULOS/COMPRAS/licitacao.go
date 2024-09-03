@@ -105,7 +105,7 @@ func Cadlic(p *mpb.Progress) {
 									left join 
 										cotacaoprecos d on d.cotacaoprecosid = a.forprocessocotacaoid and d.cotacaoprecosversao = a.forprocessocotacaoversao 
 									left join 
-										processo e on e.processoid = d.cotacaoprecosprocessoid
+										processo e on e.processoid = a.forprocessoprocorgaoid
 									WHERE 
 										forprocessougid = $1
 									ORDER BY 
@@ -118,87 +118,88 @@ func Cadlic(p *mpb.Progress) {
 
 	var count int
 	err = cnx_pg.QueryRow(`select count(*) from (SELECT 
-									q.*, 
-									CASE
-										WHEN modlic = 'IN01' THEN 5
-										WHEN modlic = 'DI01' THEN 1
-										WHEN modlic = 'CC02' THEN 2
-										WHEN modlic = 'TOM3' THEN 3
-										WHEN modlic = 'CON4' THEN 4
-										WHEN modlic = 'PE01' THEN 9
-										WHEN modlic = 'PP01' THEN 8
-										WHEN modlic = 'LEIL' THEN 6
-										WHEN modlic = 'CS01' THEN 7
-									END AS codmod
-								FROM (
-									SELECT
-										a.forprocessonumero AS numpro,
-										CAST(forprocessodata AS VARCHAR) AS datae,
-										CAST(forprocessoaudienciapublicadata AS VARCHAR) AS dtpub,
-										CAST(forprocessodatafimcred AS VARCHAR) AS dtenc,
-										forprocessohorainiciocred AS horabe,
-										SUBSTRING(objetopadraodescricao, 1, 1024) AS discr,
-										/*CASE 
-											WHEN forprocessoagruparitens = 'S' THEN 'Menor Preco Global'
-											ELSE 'Menor Preco Unitario'
-										END AS discr7,*/
-										'Menor Preco Unitario' AS discr7,
-										CASE 
-											WHEN b.controletipocampo = 40 AND controletipoid = 670 THEN 'IN01'
-											WHEN b.controletipocampo = 40 AND controletipoid IN (671, 681, 678) THEN 'DI01'
-											WHEN b.controletipocampo = 40 AND controletipoid = 672 THEN 'CCO2'
-											WHEN b.controletipocampo = 40 AND controletipoid = 673 THEN 'TOM3'
-											WHEN b.controletipocampo = 40 AND controletipoid IN (674, 675) THEN 'CON4'
-											WHEN b.controletipocampo = 40 AND controletipoid = 676 THEN 'PE01'
-											WHEN b.controletipocampo = 40 AND controletipoid = 677 THEN 'PP01'
-											WHEN b.controletipocampo = 40 AND controletipoid = 679 THEN 'LEIL'
-											WHEN b.controletipocampo = 40 AND controletipoid = 680 THEN 'CS01'
-										END AS modlic,
-										NULL AS dthom,
-										NULL AS dtadj,
-										COALESCE(forprocessosituacao, 0) AS comp_ant,
-										forprocessonumero,
-										forprocessoano,
-										a.forprocessoregistropreco,
-										'T' AS ctlance,
-										CASE 
-											WHEN forprocessoobraid IS NULL THEN 'N'
-											ELSE 'S'
-										END AS obra,
-										TO_CHAR(a.forprocessoid, 'fm000000/') || forprocessoano % 2000 AS proclic,
-										a.forprocessoid,
-										2 AS microempresa,
-										1 AS licnova,
-										'$' AS tlance,
-										'N' AS mult_entidade,
-										a.forprocessoano,
-										'N' AS lei_invertfasestce,
-										a.forprocessovalorestimado,
-										forprocessojustificativa AS detalhe,
-										a.forprocessocondicaopagamento,
-										a.forprocessoaudespcodigo AS codtce,
-										CASE 
-											WHEN a.forprocessoaudespcodigo IS NOT NULL THEN 'S'
-											ELSE 'N'
-										END AS enviotce,
-										to_char(d.cotacaoprecosnumero,'fm00000/')||d.cotacaoprecosano%2000 numorc,
-										e.processonumero,
-										e.processoano
-									FROM
-										formalizacaoprocesso a
-									LEFT JOIN 
-										controletipo b ON a.forprocessomodalidadeid = b.controletipoid
-									left join 
-										objetopadrao c on c.objetopadraoid = a.forprocessoobjetoid
-									left join 
-										cotacaoprecos d on d.cotacaoprecosid = a.forprocessocotacaoid and d.cotacaoprecosversao = a.forprocessocotacaoversao 
-									left join 
-										processo e on e.processoid = d.cotacaoprecosprocessoid
-									WHERE 
-										forprocessougid = $1
-									ORDER BY 
-										a.forprocessoano DESC, 
-										a.forprocessonumero) AS q) as rn`, utils.GetEmpresa()).Scan(&count)
+										q.*, 
+										CASE
+											WHEN modlic = 'IN01' THEN 5
+											WHEN modlic = 'DI01' THEN 1
+											WHEN modlic = 'CC02' THEN 2
+											WHEN modlic = 'TOM3' THEN 3
+											WHEN modlic = 'CON4' THEN 4
+											WHEN modlic = 'PE01' THEN 9
+											WHEN modlic = 'PP01' THEN 8
+											WHEN modlic = 'LEIL' THEN 6
+											WHEN modlic = 'CS01' THEN 7
+										END AS codmod
+									FROM (
+										SELECT
+											a.forprocessonumero AS numpro,
+											CAST(forprocessodata AS VARCHAR) AS datae,
+											CAST(forprocessoaudienciapublicadata AS VARCHAR) AS dtpub,
+											CAST(forprocessodatafimcred AS VARCHAR) AS dtenc,
+											forprocessohorainiciocred AS horabe,
+											SUBSTRING(objetopadraodescricao, 1, 1024) AS discr,
+											/*CASE 
+												WHEN forprocessoagruparitens = 'S' THEN 'Menor Preco Global'
+												ELSE 'Menor Preco Unitario'
+											END AS discr7,*/
+											'Menor Preco Unitario' AS discr7,
+											CASE 
+												WHEN b.controletipocampo = 40 AND controletipoid = 670 THEN 'IN01'
+												WHEN b.controletipocampo = 40 AND controletipoid IN (671, 681, 678) THEN 'DI01'
+												WHEN b.controletipocampo = 40 AND controletipoid = 672 THEN 'CCO2'
+												WHEN b.controletipocampo = 40 AND controletipoid = 673 THEN 'TOM3'
+												WHEN b.controletipocampo = 40 AND controletipoid IN (674, 675) THEN 'CON4'
+												WHEN b.controletipocampo = 40 AND controletipoid = 676 THEN 'PE01'
+												WHEN b.controletipocampo = 40 AND controletipoid = 677 THEN 'PP01'
+												WHEN b.controletipocampo = 40 AND controletipoid = 679 THEN 'LEIL'
+												WHEN b.controletipocampo = 40 AND controletipoid = 680 THEN 'CS01'
+											END AS modlic,
+											NULL AS dthom,
+											NULL AS dtadj,
+											COALESCE(forprocessosituacao, 0) AS comp_ant,
+											forprocessonumero,
+											forprocessoano,
+											a.forprocessoregistropreco,
+											'T' AS ctlance,
+											CASE 
+												WHEN forprocessoobraid IS NULL THEN 'N'
+												ELSE 'S'
+											END AS obra,
+											TO_CHAR(e.processonumero, 'fm000000/') || processoano % 2000 AS proclic, --TO_CHAR(a.forprocessoid, 'fm000000/') || forprocessoano % 2000 AS proclic,
+											a.forprocessoid,
+											2 AS microempresa,
+											1 AS licnova,
+											'$' AS tlance,
+											'N' AS mult_entidade,
+											a.forprocessoano,
+											'N' AS lei_invertfasestce,
+											a.forprocessovalorestimado,
+											forprocessojustificativa AS detalhe,
+											a.forprocessocondicaopagamento,
+											a.forprocessoaudespcodigo AS codtce,
+											CASE 
+												WHEN a.forprocessoaudespcodigo IS NOT NULL THEN 'S'
+												ELSE 'N'
+											END AS enviotce,
+											to_char(d.cotacaoprecosnumero,'fm00000/')||d.cotacaoprecosano%2000 numorc,
+											e.processonumero,
+											e.processoano
+										FROM
+											formalizacaoprocesso a
+										LEFT JOIN 
+											controletipo b ON a.forprocessomodalidadeid = b.controletipoid
+										left join 
+											objetopadrao c on c.objetopadraoid = a.forprocessoobjetoid
+										left join 
+											cotacaoprecos d on d.cotacaoprecosid = a.forprocessocotacaoid and d.cotacaoprecosversao = a.forprocessocotacaoversao 
+										left join 
+											processo e on e.processoid = a.forprocessoprocorgaoid
+										WHERE 
+											forprocessougid = $1
+										ORDER BY 
+											a.forprocessoano DESC, 
+											a.forprocessonumero
+									) AS q) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(`Erro ao contar registros` + err.Error())
 	}

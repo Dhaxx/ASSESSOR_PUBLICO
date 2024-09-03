@@ -63,7 +63,7 @@ func PtCadpat(p *mpb.Progress) {
 
 	// Query
 	rows, err := cnx_psq.Query(`select
-			incorporacaocodigo codigo_pat,
+			incorporacaoid codigo_pat,
 			incorpgestoraid,
 			incorporacaonatureza grupo,
 			to_char(incorporacaoplaquetanumero,
@@ -117,7 +117,7 @@ func PtCadpat(p *mpb.Progress) {
 	// Conta registros
 	var count int
 	err = cnx_psq.QueryRow(`select count(*) from (select
-			incorporacaocodigo codigo_pat,
+			incorporacaoid codigo_pat,
 			incorpgestoraid,
 			incorporacaonatureza grupo,
 			to_char(incorporacaoplaquetanumero,
