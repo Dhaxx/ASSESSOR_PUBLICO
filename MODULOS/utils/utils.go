@@ -153,7 +153,15 @@ func AtualizaCadpat() {
 	_, err = cnx_aux.Exec(`MERGE INTO PT_CADPAT d USING (SELECT codigo_pat_mov, data_mov, valor_mov FROM PT_MOVBEM WHERE tipo_mov = 'R' and depreciacao_mov = 'N') o
 		ON (d.codigo_pat = o.codigo_pat_mov)
 		WHEN MATCHED THEN 
-			UPDATE SET d.dtlan_pat = o.data_mov, d.valatu_pat = o.valor_mov`)
+			UPDATE SET d.dtlan_pat = o.data_mov--, d.valatu_pat = o.valor_mov`)
+	if err != nil {
+		panic("Falha ao executar merge: " + err.Error())
+	}
+
+	_, err = cnx_aux.Exec(`MERGE INTO PT_CADPAT d USING (SELECT codigo_pat_mov, sum(valor_mov) valor_mov FROM PT_MOVBEM GROUP BY 1) o
+		ON (d.codigo_pat = o.codigo_pat_mov)
+		WHEN MATCHED THEN 
+			UPDATE SET d.valatu_pat = o.valor_mov`)
 	if err != nil {
 		panic("Falha ao executar merge: " + err.Error())
 	}

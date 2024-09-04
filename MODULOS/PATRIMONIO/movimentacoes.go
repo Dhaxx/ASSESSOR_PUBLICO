@@ -363,3 +363,105 @@ func Reavaliacao(p *mpb.Progress) {
 		bar31.Increment()
 	}	
 }
+
+func Depreciacao(p *mpb.Progress) {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic(err)
+	}
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic(err)
+	}
+
+	// Limpa Tabela
+	cnx_fdb.Exec("DELETE FROM PT_MOVBEM WHERE TIPO_MOV = 'R' and depreciacao_mov = 'S';")
+
+	// Insert
+	insert, err := cnx_fdb.Prepare(`insert into pt_movbem (
+			empresa_mov,
+			codigo_mov,
+			codigo_pat_mov,
+			data_mov,
+			tipo_mov,
+			depreciacao_mov,
+			codigo_cpl_mov,
+			valor_mov,
+			historico_mov,
+			hash_sinc,
+			valor_taxa,
+			qtd_meses) values (?,?,?,?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		panic(err)
+	}		
+
+	// Consulta
+	rows, err := cnx_psq.Query(`select
+			atuvaloreshistoricogestoraid empresa_mov,
+			atuvaloreshistoricoincorporacaoid codigo_pat_mov,
+			atuvaloreshistoricodatacorte,
+			'R' tipo_mov,
+			'S' depreciacao_mov,
+			substring(replace(atuvaloreshistoricoclassecodigo,'.',''),1,9),
+			-atuvaloreshistoricovalortaxa*atuvaloreshistoricomesesaatualizar valor_mov,
+			-atuvaloreshistoricovalortaxa valor_taxa,
+			atuvaloreshistoricomesesaatualizar,
+			atuvaloreshistoricocompetenciafinal
+		from
+			atualizacaovaloreshistorico a
+		join incorporacao b on
+			a.atuvaloreshistoricoincorporacaoid = b.incorporacaoid
+		where atuvaloreshistoricogestoraid = $1`, utils.GetEmpresa())
+	if err != nil {
+		panic(err)
+	}
+
+	var count int
+	err = cnx_psq.QueryRow(`SELECT COUNT(*) FROM (select
+			atuvaloreshistoricogestoraid empresa_mov,
+			atuvaloreshistoricoincorporacaoid codigo_pat_mov,
+			atuvaloreshistoricodatacorte,
+			'R' tipo_mov,
+			'S' depreciacao_mov,
+			substring(replace(atuvaloreshistoricoclassecodigo,'.',''),1,9),
+			-atuvaloreshistoricovalortaxa*atuvaloreshistoricomesesaatualizar valor_mov,
+			-atuvaloreshistoricovalortaxa valor_taxa,
+			atuvaloreshistoricomesesaatualizar,
+			atuvaloreshistoricocompetenciafinal
+		from
+			atualizacaovaloreshistorico a
+		join incorporacao b on
+			a.atuvaloreshistoricoincorporacaoid = b.incorporacaoid
+		where atuvaloreshistoricogestoraid = $1) as rn`, utils.GetEmpresa()).Scan(&count)
+	if err != nil {
+		panic(err)
+	}
+
+	bar32 := p.AddBar(int64(count), mpb.PrependDecorators(
+		decor.Name("PT_MOVBEM: "),
+		), mpb.AppendDecorators(
+		decor.Percentage(),
+		),
+	)
+
+	var codigo_mov int
+	cnx_fdb.QueryRow("select max(codigo_mov) from pt_movbem").Scan(&codigo_mov)
+
+	for rows.Next() {
+		codigo_mov++
+		var empresa, codigo_pat_mov, qtd_meses nulls.Int
+		var data_mov, tipo_mov, depreciacao_mov, codigo_cpl_mov, historico_mov nulls.String
+		var valor_mov, valor_taxa nulls.Float64
+		err = rows.Scan(&empresa, &codigo_pat_mov, &data_mov, &tipo_mov, &depreciacao_mov, &codigo_cpl_mov, &valor_mov, &valor_taxa, &qtd_meses, &historico_mov)
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = insert.Exec(empresa, codigo_mov, codigo_pat_mov, data_mov, tipo_mov, depreciacao_mov, codigo_cpl_mov, valor_mov, historico_mov, codigo_mov, valor_taxa, qtd_meses)
+		if err != nil {
+			panic(err)
+		}
+		bar32.Increment()
+	}
+}

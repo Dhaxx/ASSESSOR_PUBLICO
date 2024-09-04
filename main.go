@@ -178,5 +178,6 @@ func main() {
 	patrimonio.Transferencias(p)
 	patrimonio.Baixas(p)
 	patrimonio.Reavaliacao(p)
+	patrimonio.Depreciacao(p)
 	utils.AtualizaCadpat()
 }
