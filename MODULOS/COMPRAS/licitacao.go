@@ -79,7 +79,7 @@ func Cadlic(p *mpb.Progress) {
 											WHEN forprocessoobraid IS NULL THEN 'N'
 											ELSE 'S'
 										END AS obra,
-										TO_CHAR(a.forprocessoid, 'fm000000/') || forprocessoano % 2000 AS proclic,
+										TO_CHAR(coalesce(e.processonumero, a.forprocessoid), 'fm000000/') || coalesce(e.processoano, a.forprocessoano)  % 2000 AS proclic,
 										a.forprocessoid,
 										2 AS microempresa,
 										1 AS licnova,

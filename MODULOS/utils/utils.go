@@ -228,16 +228,32 @@ func AtualizaNumeroAta() {
 	}
 	defer cnx_psq.Close()
 
-	rows, err := cnx_psq.Query(`select 'update prolic set controle_ata_rp = '''||ataregprecoata||'/'||ataregprecoano||''' where codif = '||ataregprecofornecedorid||' and numlic = '|| ataregprecoforprocessoid|| ';' from ataregistropreco a
-		where ataregprecougid = $1`, GetEmpresa())	
+	rows, err := cnx_psq.Query(`select
+			'update prolic set controle_ata_rp = ''' || ataregprecoata || '/' || ataregprecoano || ''' where codif = ' || ataregprecofornecedorid || ' and numlic = ' || ataregprecoforprocessoid || ';',
+			'update regprecodoc set dtprazo = ''' || ataregprecodatatermino || ''' where numlic = ' || ataregprecoforprocessoid || ';',
+			'update regpreco set dtprazo = ''' || ataregprecodatatermino || ''' where numlic = ' || ataregprecoforprocessoid || ' and codif = '||ataregprecofornecedorid||';'
+		from
+			ataregistropreco a
+		where
+			ataregprecougid = $1`, GetEmpresa())	
 	if err != nil {
 		panic("Falha ao executar select: " + err.Error())
 	}
 
-	var query string
+	var prolic string
+	var regprecodoc string
+	var regpreco string
 	for rows.Next() {
-		rows.Scan(&query)
-		_, err = cnx_aux.Exec(query)
+		rows.Scan(&prolic, &regprecodoc, &regpreco)
+		_, err = cnx_aux.Exec(prolic)
+		if err != nil {
+			panic("Falha ao executar update: " + err.Error())
+		}
+		_, err = cnx_aux.Exec(regprecodoc)
+		if err != nil {
+			panic("Falha ao executar update: " + err.Error())
+		}
+		_, err = cnx_aux.Exec(regpreco)
 		if err != nil {
 			panic("Falha ao executar update: " + err.Error())
 		}

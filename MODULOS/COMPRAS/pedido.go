@@ -502,6 +502,9 @@ func Icadreq(p *mpb.Progress) {
 	// Limpando
 	cnx_fdb.Exec("DELETE from ICADREQ")
 
+	// DESLIGA TRIGGER
+	cnx_fdb.Exec(`ALTER TRIGGER TI_ICADREQ INACTIVE;`)
+
 	// Query
 	rows, err := cnx_pg.Query(`select
 			a.movdocid id_requi,
