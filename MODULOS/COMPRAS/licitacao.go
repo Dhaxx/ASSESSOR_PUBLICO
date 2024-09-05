@@ -25,6 +25,8 @@ func Cadlic(p *mpb.Progress) {
 	}
 	defer cnx_pg.Close()
 
+	cnx_fdb.Exec("ALTER TRIGGER TI_CADLIC INACTIVE")
+
 	// Limpando Tabela
 	cnx_fdb.Exec("DELETE FROM CADLIC")
 
@@ -44,7 +46,7 @@ func Cadlic(p *mpb.Progress) {
 									END AS codmod
 								FROM (
 									SELECT
-										a.forprocessonumero AS numpro,
+										coalesce(a.forprocessonumero, processonumero)  AS numpro,
 										CAST(forprocessodata AS VARCHAR) AS datae,
 										CAST(forprocessoaudienciapublicadata AS VARCHAR) AS dtpub,
 										CAST(forprocessodatafimcred AS VARCHAR) AS dtenc,
@@ -326,7 +328,28 @@ func Cadlic(p *mpb.Progress) {
 						END
 					END`)
 	cnx_fdb.Exec(`UPDATE CADLIC SET anomod = ano where anomod is null`)
-	cnx_fdb.Exec(`INSERT INTO MODLICANO (ULTNUMPRO, CODMOD, ANOMOD, EMPRESA) SELECT COALESCE(MAX(NUMPRO),0), CODMOD, ANOMOD, EMPRESA FROM CADLIC c WHERE CODMOD IS NOT NULL GROUP BY 2, 3, 4`)
+	cnx_fdb.Exec(`INSERT
+			INTO
+			MODLICANO (ULTNUMPRO,
+			CODMOD,
+			ANOMOD,
+			EMPRESA)
+		SELECT
+			COALESCE(MAX(NUMPRO), 0),
+			CODMOD,
+			COALESCE(ANOMOD, 0) ANOMOD,
+			EMPRESA
+		FROM
+			CADLIC c
+		WHERE
+			CODMOD IS NOT NULL
+		GROUP BY
+			2,
+			3,
+			4
+		ORDER BY
+			anomod,
+			codmod`)
 }
 
 func Cadprolic(p *mpb.Progress) {
@@ -1070,6 +1093,9 @@ func Aditivo(p *mpb.Progress) {
 		panic("Erro ao conectar no banco: " + err.Error())
 	}
 	defer cnx_pg.Close()
+
+	// Auxiliar
+	cnx_fdb.Exec("alter table cadpro add total double precision")
 
 	// Limpando Tabela
 	cnx_fdb.Exec("update cadpro set qtdadt = quan1, vaunadt = vaun1, vatoadt = vato1, total = vato1")

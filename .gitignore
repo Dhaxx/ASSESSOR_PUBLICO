@@ -1,5 +1,5 @@
 # Arquivos de conexao
-conexao/
+conexao.go
 
 # Diretórios de build
 /bin

@@ -93,42 +93,50 @@ func AtualizaCadpat() {
 		panic("Falha ao conectar com o banco de destino: " + err.Error())
 	}
 
-	_, err = cnx_aux.Exec(`EXECUTE BLOCK AS
-		DECLARE VARIABLE codigo_pat_mov integer;
-		DECLARE VARIABLE codigo_cpl_ant_mov integer;
-		DECLARE VARIABLE unid_ant integer;
-		DECLARE VARIABLE subunid_ant integer;
-		DECLARE VARIABLE codigo_set_mov integer;
-		BEGIN
-			FOR
-				SELECT
-					codigo_pat_mov,
-					codigo_cpl_ant_mov,
-					UNID_ANT,
-					SUBUNID_ANT
-				FROM
-					(
-					SELECT
-						codigo_pat_mov,
-						codigo_cpl_ant_mov,
-						UNID_ANT,
-						SUBUNID_ANT,
-						ROW_NUMBER() OVER (PARTITION BY codigo_pat_mov
-					ORDER BY
-						codigo_mov) AS rn
-					FROM
-						pt_movbem
-					WHERE
-						tipo_mov IN ('T', 'P')
-				) AS Movimentacoes
-				INTO :codigo_pat_mov, :codigo_cpl_ant_mov, :unid_ant, :subunid_ant
-			DO
-				BEGIN
-					SELECT COALESCE(codigo_set,0) FROM pt_cadpats WHERE codigo_des_set = :unid_ant AND subunid_ant = :subunid_ant INTO :codigo_set_mov;
-				
-					UPDATE pt_movbem SET CODIGO_SET_MOV = :CODIGO_SET_MOV, CODIGO_CPL_MOV = :codigo_cpl_ant_mov WHERE CODIGO_PAT_MOV = :codigo_pat_mov AND TIPO_MOV = 'A';
-				END;
-		END`)
+	_, err = cnx_aux.Exec(`MERGE INTO pt_movbem d USING (SELECT
+			codigo_pat_mov,
+			m.unid_ant,
+			m.subunid_ant,
+			b.codigo_set
+		FROM (
+			SELECT
+				codigo_pat_mov,
+				unid_ant,
+				subunid_ant,
+				ROW_NUMBER() OVER (PARTITION BY codigo_pat_mov ORDER BY codigo_mov asc) AS rn
+			FROM
+				PT_MOVBEM
+			WHERE
+				tipo_mov in ('P','T')
+				AND (unid_ant IS NOT NULL AND subunid_ant IS NOT NULL)
+		) AS m
+		JOIN pt_cadpats b ON b.codigo_des_set = m.unid_ant AND b.subunid_ant = m.subunid_ant
+		WHERE
+			rn = 1) o ON (o.codigo_pat_mov = d.codigo_pat_mov AND d.tipo_mov = 'A')
+		WHEN MATCHED THEN 
+			UPDATE SET d.codigo_set_mov = o.codigo_set`)
+	if err != nil {
+		panic("Falha ao executar update: " + err.Error())
+	}
+
+	_, err = cnx_aux.Exec(`MERGE INTO pt_movbem d USING (SELECT
+			codigo_pat_mov,
+			codigo_cpl_ant_mov
+		FROM (
+			SELECT
+				codigo_pat_mov,
+				codigo_cpl_ant_mov,
+				ROW_NUMBER() OVER (PARTITION BY codigo_pat_mov ORDER BY codigo_mov asc) AS rn
+			FROM
+				PT_MOVBEM
+			WHERE
+				tipo_mov in ('P','T')
+				AND codigo_cpl_ant_mov IS NOT null
+		) AS m
+		WHERE
+			rn = 1) o ON (o.codigo_pat_mov = d.codigo_pat_mov AND d.tipo_mov = 'A')
+		WHEN MATCHED THEN 
+			UPDATE SET d.codigo_cpl_mov = o.codigo_cpl_ant_mov`)
 	if err != nil {
 		panic("Falha ao executar update: " + err.Error())
 	}
@@ -150,7 +158,20 @@ func AtualizaCadpat() {
 		panic("Falha ao executar merge: " + err.Error())
 	}
 
-	_, err = cnx_aux.Exec(`MERGE INTO PT_CADPAT d USING (SELECT codigo_pat_mov, data_mov, valor_mov FROM PT_MOVBEM WHERE tipo_mov = 'R' and depreciacao_mov = 'N') o
+	_, err = cnx_aux.Exec(`MERGE INTO PT_CADPAT d USING (SELECT
+			m.codigo_pat_mov,
+			data_mov
+		FROM (
+			SELECT
+				codigo_pat_mov,
+				data_mov,
+				ROW_NUMBER() OVER (PARTITION BY codigo_pat_mov ORDER BY codigo_mov DESC) AS rn
+			FROM
+				PT_MOVBEM
+			WHERE
+				tipo_mov IN ('R') AND depreciacao_mov <> 'S'
+		) AS m
+		WHERE m.rn = 1) o
 		ON (d.codigo_pat = o.codigo_pat_mov)
 		WHEN MATCHED THEN 
 			UPDATE SET d.dtlan_pat = o.data_mov--, d.valatu_pat = o.valor_mov`)
@@ -165,5 +186,97 @@ func AtualizaCadpat() {
 	if err != nil {
 		panic("Falha ao executar merge: " + err.Error())
 	}
+
+	_, err = cnx_aux.Exec(`MERGE INTO PT_CADPAT d USING (SELECT
+			m.codigo_pat_mov,
+			codigo_cpl_mov
+		FROM (
+			SELECT
+				codigo_pat_mov,
+				codigo_cpl_mov,
+				ROW_NUMBER() OVER (PARTITION BY codigo_pat_mov ORDER BY codigo_mov DESC) AS rn
+			FROM
+				PT_MOVBEM
+			WHERE
+				tipo_mov IN ('P')
+		) AS m
+		WHERE m.rn = 1) o
+		ON (d.codigo_pat = o.codigo_pat_mov)
+		WHEN MATCHED THEN 
+			UPDATE SET d.codigo_cpl_pat = o.codigo_cpl_mov`)
+	if err != nil {
+		panic("Falha ao executar merge: " + err.Error())
+	}
+
+	_,err = cnx_aux.Exec(`UPDATE PARAMPATRI SET CORRELACAO_PCASP_OK = 'S', CORRELACAO_PLANOCONTAS='S'`)
+	if err != nil {
+		panic("Falha ao executar update: " + err.Error())
+	}
 	cnx_aux.Close()
+}
+
+func AtualizaNumeroAta() {
+	cnx_aux, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Falha ao conectar com o banco de destino: " + err.Error())
+	}
+	defer cnx_aux.Close()
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Falha ao conectar com o banco de origem: " + err.Error())
+	}
+	defer cnx_psq.Close()
+
+	rows, err := cnx_psq.Query(`select 'update prolic set controle_ata_rp = '''||ataregprecoata||'/'||ataregprecoano||''' where codif = '||ataregprecofornecedorid||' and numlic = '|| ataregprecoforprocessoid|| ';' from ataregistropreco a
+		where ataregprecougid = $1`, GetEmpresa())	
+	if err != nil {
+		panic("Falha ao executar select: " + err.Error())
+	}
+
+	var query string
+	for rows.Next() {
+		rows.Scan(&query)
+		_, err = cnx_aux.Exec(query)
+		if err != nil {
+			panic("Falha ao executar update: " + err.Error())
+		}
+	}
+}
+
+func LimpaPatrimonio() {
+	cnx_aux, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Falha ao conectar com o banco de destino: " + err.Error())
+	}
+	defer cnx_aux.Close()
+
+	_, err = cnx_aux.Exec(`DELETE FROM PT_MOVBEM`)
+	if err != nil {
+		panic("Falha ao executar delete: " + err.Error())
+	}
+	_, err = cnx_aux.Exec(`DELETE FROM PT_CADPAT`)
+	if err != nil {
+		panic("Falha ao executar delete: " + err.Error())
+	}
+	_, err = cnx_aux.Exec(`DELETE FROM PT_CADPATS`)
+	if err != nil {
+		panic("Falha ao executar delete: " + err.Error())
+	}
+	_, err = cnx_aux.Exec(`DELETE FROM PT_CADPATD`)
+	if err != nil {
+		panic("Falha ao executar delete: " + err.Error())
+	}
+	_, err = cnx_aux.Exec(`DELETE FROM PT_CADPATG`)
+	if err != nil {
+		panic("Falha ao executar delete: " + err.Error())
+	}
+	_, err = cnx_aux.Exec(`DELETE FROM PT_CADBAI`)
+	if err != nil {
+		panic("Falha ao executar delete: " + err.Error())
+	}
+	_, err = cnx_aux.Exec(`DELETE FROM PT_CADTIP`)
+	if err != nil {
+		panic("Falha ao executar delete: " + err.Error())
+	}
 }

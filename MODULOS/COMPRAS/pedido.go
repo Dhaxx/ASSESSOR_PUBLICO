@@ -72,10 +72,10 @@ func Cadped(p *mpb.Progress) {
 			'fm00000/')|| autforano%2000 obs,
 			to_char(autfornumero,
 			'fm00000/')|| autforano%2000 numpedant,
-			min(codccusto) codccusto
+			coalesce(min(codccusto),0) codccusto
 		from
 			autorizacaofornecimento a
-		join icadorc b on a.autforforprocessoid = b.pedidocompraforprocessoid 
+		left join icadorc b on a.autforforprocessoid = b.pedidocompraforprocessoid 
 		where
 			autforugid = $1
 		group by autforid, autforano, autfornumero, autfordataemissao, autforfornecedorid, entrou, autforugid, autforforprocessoid) as rn`, utils.GetEmpresa()).Scan(&count)
@@ -146,14 +146,14 @@ func Icadped(p *mpb.Progress) {
 			a.autforitemvalorunitario,
 			a.autforitemqtdeaut * a.autforitemvalorunitario total,
 			a.autforid,
-			min(d.codccusto) codccusto
+			coalesce(min(d.codccusto),0) codccusto
 		from
 			autorizacaofornecimentoitem a
 		join autorizacaofornecimento b on
 			a.autforid = b.autforid
 		join itemcompra c on
 			a.autforitemcompraid = c.itemcompraid
-		join icadorc d on d.pedidocompraforprocessoid = autforforprocessoid and d.codreduz = c.itemcompramaterialid
+		left join icadorc d on d.pedidocompraforprocessoid = autforforprocessoid and d.codreduz = c.itemcompramaterialid
 		--where a.autforid in (1457, 11864, 12251, 12823, 14903, 18231, 18762, 18999, 19000, 19615, 20127)
 		group by a.autforid, b.autforano, autforitemid, c.itemcompramaterialid, a.autforitemqtdetotal, a.autforitemvalorunitario, a.autforid`)
 	if err != nil {
@@ -243,6 +243,7 @@ func Icadped(p *mpb.Progress) {
         DECLARE VARIABLE VTOTPED DOUBLE PRECISION;
 
         BEGIN
+			UPDATE A.ICADPED SET CODCCUSTO A = (SELECT CODCCUSTO FROM CADPED B WHERE A.ID_CADPED = B.ID_CADPED) WHERE A.CENTROCUSTO = 0;
             FOR
                 SELECT numlic, cadpro, sum(a.QTD), sum(a.PRCTOT)
                 FROM icadped a

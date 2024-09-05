@@ -396,11 +396,13 @@ func Grupos(p *mpb.Progress) {
 	if err != nil {
 		panic(err)
 	}
+	defer cnx_fdb.Close()
 
 	cnx_psq, err := conexao.ConexaoOrigem()
 	if err != nil {
 		panic(err)
 	}
+	defer cnx_fdb.Close()
 
 	// Limpa Tabela
 	cnx_fdb.Exec("DELETE FROM PT_CADPATG")
@@ -421,7 +423,7 @@ func Grupos(p *mpb.Progress) {
 	}
 
 	// Prepara insert
-	insert, err := cnx_fdb.Prepare("INSERT INTO PT_CADPATG (CODIGO_GRU, EMPRESA_GRU, NOGRU_GRU) VALUES (?, ?, ?)")
+	insert, err := cnx_fdb.Prepare("INSERT INTO PT_CADPATG (CODIGO_GRU, EMPRESA_GRU, NOGRU_GRU, ocultar_gru) VALUES (?, ?, ?, ?)")
 	if err != nil {
 		panic(err)
 	}
@@ -439,7 +441,7 @@ func Grupos(p *mpb.Progress) {
 			panic(err)
 		}
 
-		_, err = insert.Exec(codigo, utils.GetEmpresa(), descricao)
+		_, err = insert.Exec(codigo, utils.GetEmpresa(), descricao, `N`)
 		if err != nil {
 			panic(err)
 		}

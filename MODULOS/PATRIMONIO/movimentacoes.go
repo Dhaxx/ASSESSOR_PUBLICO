@@ -77,6 +77,9 @@ func Transferencias(p *mpb.Progress) {
 	}
 	defer cnx_psq.Close()
 
+	cnx_fdb.Exec("alter table pt_movbem add unid_ant integer")
+	cnx_fdb.Exec("alter table pt_movbem add subunid_ant integer")
+
 	// Limpa Tabela
 	cnx_fdb.Exec("DELETE FROM PT_MOVBEM WHERE TIPO_MOV IN ('T','P');")
 
@@ -100,7 +103,7 @@ func Transferencias(p *mpb.Progress) {
 		join contacontabil b2 on b2.contacontabilid = c.transferbemitemantercontacontabilid
 		where
 			transferenciabemgestoraid = $1
-		order by "data_mov"`, utils.GetEmpresa())
+		order by a.transferenciabemid`, utils.GetEmpresa())
 	if err != nil {
 		panic(err)
 	}
@@ -125,7 +128,7 @@ func Transferencias(p *mpb.Progress) {
 		join contacontabil b2 on b2.contacontabilid = c.transferbemitemantercontacontabilid
 		where
 			transferenciabemgestoraid = $1
-		order by "data_mov") as rn`, utils.GetEmpresa()).Scan(&count)
+		order by a.transferenciabemid) as rn`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(err)
 	}
@@ -201,10 +204,10 @@ func Baixas(p *mpb.Progress) {
 	rows, err := cnx_psq.Query(`select
 			baixagestoraid,
 			b.baixaincorporacaoid,
-			a.baixadata,
+			cast(a.baixadata as varchar) baixadata,
 			baixaoperacao codigo_bai_mov,
 			'B' tipo_mov,
-			b.baixaincorporacaovalor,
+			-b.baixaincorporacaovalor,
 			baixahistorico
 		from
 			baixa a
@@ -291,7 +294,7 @@ func Reavaliacao(p *mpb.Progress) {
 	cnx_fdb.Exec("DELETE FROM PT_MOVBEM WHERE TIPO_MOV = 'R' and depreciacao_mov = 'N';")
 
 	// Insert
-	insert, err := cnx_fdb.Prepare(`insert into pt_movbem (empresa_mov, codigo_mov, codigo_pat_mov, data_mov, tipo_mov, depreciacao_mov, historico_mov, valor_mov, hash_sinc, codigo_cpl_mov) values (?,?,?,?,?,?,?,?,?,?,?)`)
+	insert, err := cnx_fdb.Prepare(`insert into pt_movbem (empresa_mov, codigo_mov, codigo_pat_mov, data_mov, tipo_mov, depreciacao_mov, historico_mov, valor_mov, hash_sinc, codigo_cpl_mov) values (?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		panic(err)
 	}
@@ -303,7 +306,7 @@ func Reavaliacao(p *mpb.Progress) {
 			'R' tipo_mov,
 			'N' depreciacao_mov,
 			'REAVALIAÇÃO' as historico_mov,
-			a.incorporacaohistoricodata,
+			cast(a.incorporacaohistoricodata as varchar) data_mov,
 			cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float)-cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float) valor_mov
 		from
 			incorporacaohistorico a
@@ -323,7 +326,7 @@ func Reavaliacao(p *mpb.Progress) {
 			'R' tipo_mov,
 			'N' depreciacao_mov,
 			'REAVALIAÇÃO' as historico_mov,
-			a.incorporacaohistoricodata,
+			cast(a.incorporacaohistoricodata as varchar) data_mov,
 			cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float)-cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float) valor_mov
 		from
 			incorporacaohistorico a
@@ -375,6 +378,10 @@ func Depreciacao(p *mpb.Progress) {
 		panic(err)
 	}
 
+	// Cria Campos
+	cnx_fdb.Exec("ALTER TABLE PT_MOVBEM ADD valor_taxa double precision;")
+	cnx_fdb.Exec("ALTER TABLE PT_MOVBEM ADD qtd_meses integer;")
+
 	// Limpa Tabela
 	cnx_fdb.Exec("DELETE FROM PT_MOVBEM WHERE TIPO_MOV = 'R' and depreciacao_mov = 'S';")
 
@@ -400,7 +407,7 @@ func Depreciacao(p *mpb.Progress) {
 	rows, err := cnx_psq.Query(`select
 			atuvaloreshistoricogestoraid empresa_mov,
 			atuvaloreshistoricoincorporacaoid codigo_pat_mov,
-			atuvaloreshistoricodatacorte,
+			cast(atuvaloreshistoricodatacorte as varchar) data_mov,
 			'R' tipo_mov,
 			'S' depreciacao_mov,
 			substring(replace(atuvaloreshistoricoclassecodigo,'.',''),1,9),
