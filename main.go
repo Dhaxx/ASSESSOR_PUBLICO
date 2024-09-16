@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+	utils.DesativaAtivaTriggers("INACTIVE")
 	var wg1 sync.WaitGroup
 	var wg2 sync.WaitGroup
     var wg3 sync.WaitGroup
@@ -183,4 +184,6 @@ func main() {
 	patrimonio.Reavaliacao(p)
 	patrimonio.Depreciacao(p)
 	utils.AtualizaCadpat()
+
+	utils.DesativaAtivaTriggers("ACTIVE")
 }
