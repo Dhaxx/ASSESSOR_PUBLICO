@@ -304,55 +304,57 @@ func DesativaAtivaTriggers(state string) {
 	}
 	defer cnx_aux.Close()
 
-	_, err = cnx_aux.Exec(`execute block
-		as
-			declare variable alter_trigger varchar(1024);
-		begin
-			for select 'alter trigger ' || trim(rdb$trigger_name) || ' ?;' 
-			from RDB$TRIGGERS
-			where (rdb$trigger_sequence = 200 OR (trim(rdb$trigger_name) STARTING WITH 'TBI_') OR (trim(rdb$trigger_name) STARTING WITH 'TBU_'))
-			AND rdb$relation_name IN (
-				'CADUNIMEDIDA',
-				'CADGRUPO',
-				'CADSUBGR',
-				'CADEST',
-				'DESTINO',
-				'CENTROCUSTO',
-				'CADORC',
-				'ICADORC',
-				'FCADORC',
-				'VCADORC',
-				'CADLIC',
-				'CADPROLIC',
-				'CADPROLIC_DETALHE',
-				'CADPRO_STATUS',
-				'CADLIC_SESSAO',
-				'PROLIC',
-				'PROLICS',
-				'CADPRO_PROPOSTA',
-				'CADPRO_LANCE',
-				'CADPRO_FINAL',
-				'CADPRO',
-				'CADPROLIC_DETALHE_FIC',
-				'REGPRECODOC',
-				'REGPRECO',
-				'REGPRECOHIS',
-				'CADPED',
-				'ICADPED',
-				'REQUI',
-				'ICADREQ',
-				'PT_CADTIP',
-				'PT_CADPATD',
-				'PT_CADPATS',
-				'PT_CADPATG',
-				'PT_CADPAT',
-				'PT_MOVBEM'
-			)
-			into :alter_trigger
-			do
-				execute statement :alter_trigger;
-		end`, state)
-	if err != nil {
-		panic("Falha ao executar execute block: " + err.Error())
-	}
+	query := fmt.Sprintf(`execute block
+        as
+            declare variable alter_trigger varchar(1024);
+        begin
+            for select 'alter trigger ' || trim(rdb$trigger_name) || ' %s;' 
+            from RDB$TRIGGERS
+            where (rdb$trigger_sequence = 200 OR (trim(rdb$trigger_name) STARTING WITH 'TBI_') OR (trim(rdb$trigger_name) STARTING WITH 'TBU_'))
+            AND rdb$relation_name IN (
+                'CADUNIMEDIDA',
+                'CADGRUPO',
+                'CADSUBGR',
+                'CADEST',
+                'DESTINO',
+                'CENTROCUSTO',
+                'CADORC',
+                'ICADORC',
+                'FCADORC',
+                'VCADORC',
+                'CADLIC',
+                'CADPROLIC',
+                'CADPROLIC_DETALHE',
+                'CADPRO_STATUS',
+                'CADLIC_SESSAO',
+                'PROLIC',
+                'PROLICS',
+                'CADPRO_PROPOSTA',
+                'CADPRO_LANCE',
+                'CADPRO_FINAL',
+                'CADPRO',
+                'CADPROLIC_DETALHE_FIC',
+                'REGPRECODOC',
+                'REGPRECO',
+                'REGPRECOHIS',
+                'CADPED',
+                'ICADPED',
+                'REQUI',
+                'ICADREQ',
+                'PT_CADTIP',
+                'PT_CADPATD',
+                'PT_CADPATS',
+                'PT_CADPATG',
+                'PT_CADPAT',
+                'PT_MOVBEM'
+            )
+            into :alter_trigger
+            do
+                execute statement :alter_trigger;
+        end`, state)
+
+    _, err = cnx_aux.Exec(query)
+    if err != nil {
+        panic("Falha ao executar execute block: " + err.Error())
+    }
 }
