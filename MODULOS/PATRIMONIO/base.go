@@ -321,7 +321,6 @@ func Subunidade(p*mpb.Progress) {
 		panic(err)
 	}
 	tx.Exec("DELETE FROM PT_CADPATS")
-	tx.Exec("DELETE FROM PT_CADPATD")
 	tx.Commit()
 
 	// Cria Campos 
@@ -402,14 +401,14 @@ func Grupos(p *mpb.Progress) {
 	if err != nil {
 		panic(err)
 	}
-	defer cnx_fdb.Close()
+	defer cnx_psq.Close()
 
 	// Limpa Tabela
 	cnx_fdb.Exec("DELETE FROM PT_CADPATG")
 
 	// Query 
 	rows, err := cnx_psq.Query(`select distinct 
-		incorporacaonatureza,
+		coalesce(incorporacaonatureza,0),
 		case
 			when incorporacaonatureza = 1 then 'Móveis'
 			when incorporacaonatureza = 2 then 'Imóveis'

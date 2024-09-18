@@ -65,7 +65,7 @@ func PtCadpat(p *mpb.Progress) {
 	rows, err := cnx_psq.Query(`select
 			incorporacaoid codigo_pat,
 			incorpgestoraid,
-			incorporacaonatureza grupo,
+			coalesce(incorporacaonatureza,0) grupo,
 			to_char(incorporacaoplaquetanumero,
 			'fm000000'),
 			cast(replace(b.contacontabilcodigoniveltce,

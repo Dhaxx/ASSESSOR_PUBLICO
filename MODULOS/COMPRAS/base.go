@@ -386,7 +386,7 @@ func CentroCusto(p *mpb.Progress) {
 	defer cnx_pg.Close()
 
 	// Cria Campo de identificação
-	cnx_fdb.Exec("INSERT INTO TABORGAO (PODER, ORGAO, NOME) VALUES('02', '01', 'CONVERSAO');")
+	// cnx_fdb.Exec("INSERT INTO TABORGAO (PODER, ORGAO, NOME) VALUES('02', '01', 'CONVERSAO');")
 	cnx_fdb.Exec("ALTER TABLE CENTROCUSTO ADD ID_ANT INTEGER")      // Cria Campo de identificação
 	cnx_fdb.Exec("ALTER TABLE CENTROCUSTO ADD COD_ANT VARCHAR(30)") // Cria Campo de identificação
 

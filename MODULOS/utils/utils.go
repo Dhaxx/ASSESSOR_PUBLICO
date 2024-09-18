@@ -297,6 +297,47 @@ func LimpaPatrimonio() {
 	}
 }
 
+func LimpaCompras() {
+	cnx_aux, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Falha ao conectar com o banco de destino: " + err.Error())
+	}
+	defer cnx_aux.Close()
+
+	_, err = cnx_aux.Exec(`execute block as
+		begin
+		DELETE FROM ICADREQ;
+		DELETE FROM REQUI;
+		DELETE FROM ICADPED;
+		DELETE FROM CADPED;
+		DELETE FROM regpreco;
+		DELETE FROM regprecohis;
+		DELETE FROM regprecodoc;
+		DELETE FROM CADPROLIC_DETALHE_FIC;
+		DELETE FROM CADPRO;
+		DELETE FROM CADPRO_FINAL;
+		DELETE FROM CADPRO_LANCE;
+		DELETE FROM CADPRO_PROPOSTA;
+		DELETE FROM PROLICS;
+		DELETE FROM PROLIC;
+		DELETE FROM CADPRO_STATUS;
+		DELETE FROM CADLIC_SESSAO;
+		DELETE FROM CADPROLIC_DETALHE;
+		DELETE FROM CADPROLIC;
+		DELETE FROM CADLIC;
+		DELETE FROM VCADORC;
+		DELETE FROM FCADORC;
+		DELETE FROM ICADORC;
+		DELETE FROM CADORC;
+		DELETE FROM CADEST;
+		DELETE FROM CENTROCUSTO;
+		DELETE FROM DESTINO;
+		end;`)
+	if err != nil {
+		panic("Falha ao executar delete: " + err.Error())
+	}
+}
+
 func DesativaAtivaTriggers(state string) {
 	cnx_aux, err := conexao.ConexaoDestino()
 	if err != nil {
@@ -310,7 +351,7 @@ func DesativaAtivaTriggers(state string) {
         begin
             for select 'alter trigger ' || trim(rdb$trigger_name) || ' %s;' 
             from RDB$TRIGGERS
-            where (rdb$trigger_sequence = 200 OR (trim(rdb$trigger_name) STARTING WITH 'TBI_') OR (trim(rdb$trigger_name) STARTING WITH 'TBU_'))
+            where (rdb$trigger_sequence = 200 OR (trim(rdb$trigger_name) STARTING WITH 'TBI_') OR (trim(rdb$trigger_name) STARTING WITH 'TBU_') OR (trim(rdb$trigger_name) STARTING WITH 'TBD_') OR (trim(rdb$trigger_name) STARTING WITH 'TD_'))
             AND rdb$relation_name IN (
                 'CADUNIMEDIDA',
                 'CADGRUPO',
@@ -357,4 +398,62 @@ func DesativaAtivaTriggers(state string) {
     if err != nil {
         panic("Falha ao executar execute block: " + err.Error())
     }
+}
+
+func CriaViewIcadorc() {
+	cnx_aux, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Falha ao conectar com o banco de destino: " + err.Error())
+	}
+	defer cnx_aux.Close()
+
+	_, err = cnx_aux.Exec(`create view icadorc as
+										select distinct 
+										--loteordem,
+										coalesce(d.estimativaitemid,b.itemcompraordem) item,
+										b.itemcompramaterialid AS codreduz,
+										SUM(b.itemcompraquantidade) AS total_quantidade, -- Soma as quantidades
+										0 AS valor,
+										coalesce(a.pedidocompraunidorcid,0) codccusto,
+										CASE 
+											WHEN pedidocompracotacaoid IS NULL THEN 'N' 
+											ELSE 'S' 
+										END AS flg_cotacao,
+										COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) AS id_ant,
+										a.pedidocompraforprocessoid
+									FROM
+										pedidocompra a
+									JOIN itemcompra b ON
+										a.pedidocompraid = b.itemcomprapedidoid
+										AND a.pedidocompraversao = b.itemcompraversao
+									LEFT JOIN estimativa c ON c.estimativacotacaoid = a.pedidocompracotacaoid
+										AND c.estimativacotacaoversao = a.pedidocompracotacaoversao 
+									LEFT JOIN estimativaitem d ON d.estimativaid = c.estimativaid and d.estimativaitemmaterialid = b.itemcompramaterialid
+									LEFT JOIN lote e ON e.loteid = d.estimativaitemloteid
+										AND e.loteversao = d.estimativaitemloteversao 
+									LEFT JOIN cotacaoprecos f ON f.cotacaoprecosid = a.pedidocompracotacaoid
+										AND f.cotacaoprecosversao = a.pedidocompracotacaoversao 
+									WHERE
+										a.pedidocompraugid = 2 
+										AND itemcompraorigem = 1 
+										and itemcompramaterialid is not null
+										--AND COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) = 2
+									GROUP by
+										loteordem,
+										itemcompraordem,
+										estimativaitemid,
+										itemcompramaterialid,
+										coalesce(a.pedidocompraunidorcid,0),
+										CASE 
+											WHEN pedidocompracotacaoid IS NULL THEN 'N' 
+											ELSE 'S' 
+										END,
+										COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
+										pedidocompracotacaoid,
+										pedidocompraforprocessoid
+									order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)`)
+	if err != nil {
+		cnx_aux.Close()
+		return
+	}
 }

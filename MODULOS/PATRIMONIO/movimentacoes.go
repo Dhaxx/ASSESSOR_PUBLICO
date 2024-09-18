@@ -98,9 +98,9 @@ func Transferencias(p *mpb.Progress) {
 			replace(b2.contacontabilcodigoniveltce,'.','') cpl_mov_ant
 		from
 			transferenciabem a
-		join contacontabil b on a.transferenciabemctactbid = b.contacontabilid 
 		join transferenciabemitem c on c.transferenciabemid = a.transferenciabemid 
-		join contacontabil b2 on b2.contacontabilid = c.transferbemitemantercontacontabilid
+		left join contacontabil b on a.transferenciabemctactbid = b.contacontabilid 
+		left join contacontabil b2 on b2.contacontabilid = c.transferbemitemantercontacontabilid
 		where
 			transferenciabemgestoraid = $1
 		order by a.transferenciabemid`, utils.GetEmpresa())
