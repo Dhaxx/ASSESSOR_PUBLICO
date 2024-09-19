@@ -407,53 +407,96 @@ func CriaViewIcadorc() {
 	}
 	defer cnx_aux.Close()
 
-	_, err = cnx_aux.Exec(`create view icadorc as
-										select distinct 
-										--loteordem,
-										coalesce(d.estimativaitemid,b.itemcompraordem) item,
-										b.itemcompramaterialid AS codreduz,
-										SUM(b.itemcompraquantidade) AS total_quantidade, -- Soma as quantidades
-										0 AS valor,
-										coalesce(a.pedidocompraunidorcid,0) codccusto,
-										CASE 
-											WHEN pedidocompracotacaoid IS NULL THEN 'N' 
-											ELSE 'S' 
-										END AS flg_cotacao,
-										COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) AS id_ant,
-										a.pedidocompraforprocessoid
-									FROM
-										pedidocompra a
-									JOIN itemcompra b ON
-										a.pedidocompraid = b.itemcomprapedidoid
-										AND a.pedidocompraversao = b.itemcompraversao
-									LEFT JOIN estimativa c ON c.estimativacotacaoid = a.pedidocompracotacaoid
-										AND c.estimativacotacaoversao = a.pedidocompracotacaoversao 
-									LEFT JOIN estimativaitem d ON d.estimativaid = c.estimativaid and d.estimativaitemmaterialid = b.itemcompramaterialid
-									LEFT JOIN lote e ON e.loteid = d.estimativaitemloteid
-										AND e.loteversao = d.estimativaitemloteversao 
-									LEFT JOIN cotacaoprecos f ON f.cotacaoprecosid = a.pedidocompracotacaoid
-										AND f.cotacaoprecosversao = a.pedidocompracotacaoversao 
-									WHERE
-										a.pedidocompraugid = 2 
-										AND itemcompraorigem = 1 
-										and itemcompramaterialid is not null
-										--AND COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) = 2
-									GROUP by
-										loteordem,
-										itemcompraordem,
-										estimativaitemid,
-										itemcompramaterialid,
-										coalesce(a.pedidocompraunidorcid,0),
-										CASE 
-											WHEN pedidocompracotacaoid IS NULL THEN 'N' 
-											ELSE 'S' 
-										END,
-										COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
-										pedidocompracotacaoid,
-										pedidocompraforprocessoid
-									order by id_ant, coalesce(d.estimativaitemid,b.itemcompraordem)`)
+	empresaID := GetEmpresa()
+    query := fmt.Sprintf(`
+        CREATE VIEW icadorc AS
+        SELECT DISTINCT 
+            --loteordem,
+            COALESCE(d.estimativaitemid, b.itemcompraordem) item,
+            b.itemcompramaterialid AS codreduz,
+            SUM(b.itemcompraquantidade) AS total_quantidade, -- Soma as quantidades
+            0 AS valor,
+            COALESCE(a.pedidocompraunidorcid, 0) codccusto,
+            CASE 
+                WHEN pedidocompracotacaoid IS NULL THEN 'N' 
+                ELSE 'S' 
+            END AS flg_cotacao,
+            COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) AS id_ant,
+            a.pedidocompraforprocessoid
+        FROM
+            pedidocompra a
+        JOIN itemcompra b ON
+            a.pedidocompraid = b.itemcomprapedidoid
+            AND a.pedidocompraversao = b.itemcompraversao
+        LEFT JOIN estimativa c ON c.estimativacotacaoid = a.pedidocompracotacaoid
+            AND c.estimativacotacaoversao = a.pedidocompracotacaoversao 
+        LEFT JOIN estimativaitem d ON d.estimativaid = c.estimativaid AND d.estimativaitemmaterialid = b.itemcompramaterialid
+        LEFT JOIN lote e ON e.loteid = d.estimativaitemloteid
+            AND e.loteversao = d.estimativaitemloteversao 
+        LEFT JOIN cotacaoprecos f ON f.cotacaoprecosid = a.pedidocompracotacaoid
+            AND f.cotacaoprecosversao = a.pedidocompracotacaoversao 
+        WHERE
+            a.pedidocompraugid = %d
+            AND itemcompraorigem = 1 
+            AND itemcompramaterialid IS NOT NULL
+            --AND COALESCE(a.pedidocompracotacaoid, a.pedidocompraid) = 2
+        GROUP BY
+            loteordem,
+            itemcompraordem,
+            estimativaitemid,
+            itemcompramaterialid,
+            COALESCE(a.pedidocompraunidorcid, 0),
+            CASE 
+                WHEN pedidocompracotacaoid IS NULL THEN 'N' 
+                ELSE 'S' 
+            END,
+            COALESCE(a.pedidocompracotacaoid, a.pedidocompraid),
+            pedidocompracotacaoid,
+            pedidocompraforprocessoid
+        ORDER BY id_ant, COALESCE(d.estimativaitemid, b.itemcompraordem)
+    `, empresaID)
+
+	_, err = cnx_aux.Exec(query)
 	if err != nil {
 		cnx_aux.Close()
 		return
+	}
+}
+
+func OrganizaMovbem() {
+	cnx_aux, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Falha ao conectar com o banco de destino: " + err.Error())
+	}
+	defer cnx_aux.Close()
+
+	_, err = cnx_aux.Exec(`EXECUTE BLOCK
+		AS
+		DECLARE VARIABLE id INTEGER;
+		BEGIN
+		-- Seleciona o valor máximo de codigo_mov e armazena na variável id
+		SELECT MAX(codigo_mov) 
+			FROM pt_movbem
+			INTO :id;
+
+		-- Atualiza o campo CODIGO_MOV somando o valor de id
+		UPDATE pt_movbem 
+			SET codigo_mov = codigo_mov + :id;
+
+		-- Atualiza o campo CODIGO_MOV com um novo valor da sequência gen_ancm
+		UPDATE pt_movbem 
+			SET codigo_mov = GEN_ID(gen_ancm, 1)
+		ORDER BY
+			data_mov,
+			CASE tipo_mov
+			WHEN 'A' THEN 1
+			WHEN 'T' THEN 2
+			WHEN 'R' THEN 3
+			WHEN 'B' THEN 5
+			ELSE 4
+			END;
+		END`)
+	if err != nil {
+		panic("Falha ao executar execute block: " + err.Error())
 	}
 }

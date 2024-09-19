@@ -17,7 +17,7 @@ func Aquisicoes(p *mpb.Progress) {
 	defer cnx_fdb.Close()
 
 	bar27 := p.AddBar(1, mpb.PrependDecorators(
-		decor.Name("PT_MOVBEM: "),
+		decor.Name("PT_MOVBEM - AQUISICAO: "),
 		), mpb.AppendDecorators(
 		decor.Percentage(),
 		),
@@ -133,7 +133,7 @@ func Transferencias(p *mpb.Progress) {
 		panic(err)
 	}
 	bar28 := p.AddBar(int64(count), mpb.PrependDecorators(
-		decor.Name("PT_MOVBEM: "),
+		decor.Name("PT_MOVBEM - TRANSFERENCIAS: "),
 		), mpb.AppendDecorators(
 		decor.Percentage(),
 		),
@@ -239,7 +239,7 @@ func Baixas(p *mpb.Progress) {
 	}
 
 	bar30 := p.AddBar(int64(count), mpb.PrependDecorators(
-		decor.Name("PT_MOVBEM: "),
+		decor.Name("PT_MOVBEM - BAIXAS: "),
 		), mpb.AppendDecorators(
 		decor.Percentage(),
 		),
@@ -284,11 +284,13 @@ func Reavaliacao(p *mpb.Progress) {
 	if err != nil {
 		panic(err)
 	}
+	defer cnx_fdb.Close()
 
 	cnx_psq, err := conexao.ConexaoOrigem()
 	if err != nil {
 		panic(err)
 	}
+	defer cnx_psq.Close()
 
 	// Limpa Tabela
 	cnx_fdb.Exec("DELETE FROM PT_MOVBEM WHERE TIPO_MOV = 'R' and depreciacao_mov = 'N';")
@@ -307,7 +309,7 @@ func Reavaliacao(p *mpb.Progress) {
 			'N' depreciacao_mov,
 			'REAVALIAÇÃO' as historico_mov,
 			cast(a.incorporacaohistoricodata as varchar) data_mov,
-			cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float)-cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float) valor_mov
+			cast(replace(replace(incorporacaohistoricopara,'.',''),',','.') as float)-cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float) valor_mov
 		from
 			incorporacaohistorico a
 		join incorporacao b on
@@ -327,7 +329,7 @@ func Reavaliacao(p *mpb.Progress) {
 			'N' depreciacao_mov,
 			'REAVALIAÇÃO' as historico_mov,
 			cast(a.incorporacaohistoricodata as varchar) data_mov,
-			cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float)-cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float) valor_mov
+			cast(replace(replace(incorporacaohistoricopara,'.',''),',','.') as float)-cast(replace(replace(incorporacaohistoricode,'.',''),',','.') as float) valor_mov
 		from
 			incorporacaohistorico a
 		join incorporacao b on
@@ -340,7 +342,7 @@ func Reavaliacao(p *mpb.Progress) {
 	}
 
 	bar31 := p.AddBar(int64(count), mpb.PrependDecorators(
-		decor.Name("PT_MOVBEM: "),
+		decor.Name("PT_MOVBEM - REAVALIAÇÕES: "),
 		), mpb.AppendDecorators(
 		decor.Percentage(),
 		),
@@ -448,7 +450,7 @@ func Depreciacao(p *mpb.Progress) {
 	}
 
 	bar32 := p.AddBar(int64(count), mpb.PrependDecorators(
-		decor.Name("PT_MOVBEM: "),
+		decor.Name("PT_MOVBEM - DEPRECIACAO: "),
 		), mpb.AppendDecorators(
 		decor.Percentage(),
 		),

@@ -263,8 +263,8 @@ func Unidades(p *mpb.Progress) {
 	cnx_fdb.Exec("DELETE FROM PT_CADPATD")
 
 	// Query
-	rows, err := cnx_psq.Query(`SELECT undorcid, cast(substring(undorccodigo, 1, 2) as integer) empresa, undorcdescricao, case when undorcsituacao = 'A' then 'N' else 'S' end ocultar FROM public.unidadeorcamentaria x 
-								where cast(substring(undorccodigo, 1, 2) as integer) = $1`,  utils.GetEmpresa())
+	rows, err := cnx_psq.Query(`SELECT undorcid, undorcdescricao, case when undorcsituacao = 'A' then 'N' else 'S' end ocultar FROM public.unidadeorcamentaria x 
+								where (case when cast(substring(undorccodigo, 2, 1) as integer) = 1 then 3 when cast(substring(undorccodigo, 2, 1) as integer) = 3 then 4 else cast(substring(undorccodigo, 2, 1) as integer) end) = $1`,  utils.GetEmpresa())
 	if err != nil {
 		panic(err)
 	}
@@ -276,7 +276,8 @@ func Unidades(p *mpb.Progress) {
 	}
 
 	var count int
-	err = cnx_psq.QueryRow("SELECT COUNT(*) FROM public.unidadeorcamentaria x where cast(substring(undorccodigo, 1, 2) as integer) = $1", utils.GetEmpresa()).Scan(&count)
+	err = cnx_psq.QueryRow(`SELECTcount(*) FROM public.unidadeorcamentaria x 
+								where (case when cast(substring(undorccodigo, 2, 1) as integer) = 1 then 3 when cast(substring(undorccodigo, 2, 1) as integer) = 3 then 4 else cast(substring(undorccodigo, 2, 1) as integer) end) = $1`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic(err)
 	}
@@ -288,13 +289,13 @@ func Unidades(p *mpb.Progress) {
 	))
 
 	for rows.Next() {
-		var codigo, empresa, descricao, ocultar string
-		err = rows.Scan(&codigo, &empresa, &descricao, &ocultar)
+		var codigo, descricao, ocultar string
+		err = rows.Scan(&codigo, &descricao, &ocultar)
 		if err != nil {
 			panic(err)
 		}
 
-		_, err = insert.Exec(codigo, empresa, descricao, ocultar)
+		_, err = insert.Exec(codigo, utils.GetEmpresa(), descricao, ocultar)
 		if err != nil {
 			panic(err)
 		}
@@ -346,8 +347,11 @@ func Subunidade(p*mpb.Progress) {
 				c.destinoid = a.incorporacaodestinoid
 			JOIN orgao d ON
 				d.orgaoid = b.undorcorgaoid
-			WHERE
-				CAST(d.orgaocodigo AS integer) = $1
+			where (case 
+					when CAST(d.orgaocodigo AS integer) = 1 then 3					
+					when CAST(d.orgaocodigo AS integer) = 3 then 4					
+					else CAST(d.orgaocodigo AS integer)					
+				end) = $1
 		)
 		SELECT
 			undorcid,

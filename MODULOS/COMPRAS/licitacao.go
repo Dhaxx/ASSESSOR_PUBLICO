@@ -1206,3 +1206,13 @@ func Aditivo(p *mpb.Progress) {
 	}
 	cnx_fdb.Exec(`update CADPRO c SET VAUNADT = total / QTDADT, VATOADT = total WHERE QTDADT <> QUAN1`)
 }
+
+func Cadlicitacao() {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_fdb.Exec(`INSERT INTO CADLICITACAO (modlic, licitacao, obs, empresa, proclic, numlic) SELECT MODLIC, numpro, discr, empresa, PROCLIC, NUMLIC FROM CADLIC b WHERE NOT EXISTS (SELECT 1 FROM cadlicitacao x WHERE x.numlic = b.numlic)`)
+}

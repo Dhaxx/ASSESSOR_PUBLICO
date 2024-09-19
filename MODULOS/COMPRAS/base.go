@@ -431,7 +431,11 @@ func CentroCusto(p *mpb.Progress) {
 								from
 									unidadeorcamentaria u
 								join orgao o on u.undorcorgaoid = o.orgaoid 
-								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1`, utils.GetEmpresa())
+								where (case
+									when cast(substring(o.orgaocodigodesc, 2, 1) as integer) = 1 then 3
+									when cast(substring(o.orgaocodigodesc, 2, 1) as integer) = 3 then 4
+									else cast(substring(o.orgaocodigodesc, 2, 1) as integer)
+								end) = $1`, utils.GetEmpresa())
 	if err != nil {
 		panic("Falha ao executar select: " + err.Error())
 	}
@@ -454,7 +458,11 @@ func CentroCusto(p *mpb.Progress) {
 								from
 									unidadeorcamentaria u
 								join orgao o on u.undorcorgaoid = o.orgaoid 
-								where cast(substring(o.orgaocodigodesc, 2, 1) as integer) = $1)`, utils.GetEmpresa()).Scan(&count)
+								where (case
+									when cast(substring(o.orgaocodigodesc, 2, 1) as integer) = 1 then 3
+									when cast(substring(o.orgaocodigodesc, 2, 1) as integer) = 3 then 4
+									else cast(substring(o.orgaocodigodesc, 2, 1) as integer)
+								end) = $1)`, utils.GetEmpresa()).Scan(&count)
 	if err != nil {
 		panic("Falha ao contar registros: " + err.Error())
 	}
