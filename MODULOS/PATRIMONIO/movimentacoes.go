@@ -372,18 +372,20 @@ func Depreciacao(p *mpb.Progress) {
 	if err != nil {
 		panic(err)
 	}
+	defer cnx_fdb.Close()
 
 	cnx_psq, err := conexao.ConexaoOrigem()
 	if err != nil {
 		panic(err)
 	}
+	defer cnx_psq.Close()
 
 	// Cria Campos
 	cnx_fdb.Exec("ALTER TABLE PT_MOVBEM ADD valor_taxa double precision;")
 	cnx_fdb.Exec("ALTER TABLE PT_MOVBEM ADD qtd_meses integer;")
 
 	// Limpa Tabela
-	cnx_fdb.Exec("DELETE FROM PT_MOVBEM WHERE TIPO_MOV = 'R' and depreciacao_mov = 'S';")
+	cnx_fdb.Exec("DELETE FROM PT_MOVBEM WHERE depreciacao_mov = 'S'")
 
 	// Insert
 	insert, err := cnx_fdb.Prepare(`insert into pt_movbem (
