@@ -47,7 +47,7 @@ func Cadped(p *mpb.Progress) {
 			min(codccusto) codccusto
 		from
 			autorizacaofornecimento a
-		join icadorc b on a.autforforprocessoid = b.pedidocompraforprocessoid 
+		left join icadorc_pref b on a.autforforprocessoid = b.pedidocompraforprocessoid 
 		where
 			autforugid = $1
 		group by autforid, autforano, autfornumero, autfordataemissao, autforfornecedorid, entrou, autforugid, autforforprocessoid`, utils.GetEmpresa())
@@ -75,7 +75,7 @@ func Cadped(p *mpb.Progress) {
 			coalesce(min(codccusto),0) codccusto
 		from
 			autorizacaofornecimento a
-		left join icadorc b on a.autforforprocessoid = b.pedidocompraforprocessoid 
+		left join icadorc_pref b on a.autforforprocessoid = b.pedidocompraforprocessoid 
 		where
 			autforugid = $1
 		group by autforid, autforano, autfornumero, autfordataemissao, autforfornecedorid, entrou, autforugid, autforforprocessoid) as rn`, utils.GetEmpresa()).Scan(&count)
@@ -153,7 +153,7 @@ func Icadped(p *mpb.Progress) {
 			a.autforid = b.autforid
 		join itemcompra c on
 			a.autforitemcompraid = c.itemcompraid
-		left join icadorc d on d.pedidocompraforprocessoid = autforforprocessoid and d.codreduz = c.itemcompramaterialid
+		left join icadorc_pref d on d.pedidocompraforprocessoid = autforforprocessoid and d.codreduz = c.itemcompramaterialid
 		--where a.autforid in (1457, 11864, 12251, 12823, 14903, 18231, 18762, 18999, 19000, 19615, 20127)
 		group by a.autforid, b.autforano, autforitemid, c.itemcompramaterialid, a.autforitemqtdetotal, a.autforitemvalorunitario, a.autforid`)
 	if err != nil {

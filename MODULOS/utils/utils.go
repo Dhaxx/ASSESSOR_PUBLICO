@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+
+	"github.com/gobuffalo/nulls"
 )
 
 func EstourouSubgr(codigo int, subgrupo string, grupo string, con *sql.DB) []string {
@@ -498,5 +500,140 @@ func OrganizaMovbem() {
 		END`)
 	if err != nil {
 		panic("Falha ao executar execute block: " + err.Error())
+	}
+}
+
+func CorrigeCcustoPedido() {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_pg, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_pg.Close()
+
+	tx, err := cnx_fdb.Begin()
+	if err != nil {
+		panic("Erro ao iniciar transação: " + err.Error())
+	}
+	tx.Exec(`ALTER TABLE CADPRO ADD NOMECCUSTO VARCHAR(60);`)
+	tx.Exec(`ALTER TABLE CADPED ADD NOMECCUSTO VARCHAR(60);`)
+	tx.Commit()
+
+	tx, err = cnx_fdb.Begin()
+	if err != nil {
+		panic("Erro ao iniciar transação: " + err.Error())
+	}
+	tx.Exec(`MERGE INTO CADPRO a USING (SELECT trim(descr) descri, codccusto FROM CENTROCUSTO) b
+		ON (a.codccusto = b.codccusto) 
+		WHEN MATCHED THEN UPDATE SET a.nomeccusto = b.descri;`)
+	tx.Commit()
+
+	rows, err := cnx_pg.Query(`select 'update cadped set nomeccusto = ''' || descri || ''' where id_cadped = '||autforid||';' from (select
+			to_char(a.autforid,
+			'fm00000/')|| autforano%2000 numped,
+			autforitemid,
+			c.itemcompramaterialid,
+			a.autforitemqtdeaut,
+			a.autforitemvalorunitario,
+			a.autforitemqtdeaut * a.autforitemvalorunitario total,
+			a.autforid,
+			coalesce(min(e.pedidocompraunidorcid),0) codccusto,
+			trim(f.undorcdescricao) descri
+		from
+			autorizacaofornecimentoitem a
+		join autorizacaofornecimento b on
+			a.autforid = b.autforid
+		join itemcompra c on
+			a.autforitemcompraid = c.itemcompraid
+		join pedidocompra e on
+			e.pedidocompraid = c.itemcomprapedidoid 
+		join unidadeorcamentaria f on
+			f.undorcid = e.pedidocompraunidorcid
+		left join icadorc_pref d on d.pedidocompraforprocessoid = autforforprocessoid and d.codreduz = c.itemcompramaterialid
+		where b.autforugid = $1
+		group by a.autforid, b.autforano, autforitemid, c.itemcompramaterialid, a.autforitemqtdetotal, a.autforitemvalorunitario, a.autforid, undorcdescricao) as rn`, GetEmpresa())
+	if err != nil {
+		panic("Erro ao buscar dados: "+err.Error())
+	}
+
+	tx, err = cnx_fdb.Begin()
+	if err != nil {
+		panic("Erro ao iniciar transação: " + err.Error())
+	}
+	for rows.Next() {
+		var query string
+		rows.Scan(&query)
+		tx.Exec(query)
+	}
+	tx.Commit()
+
+	tx, err = cnx_fdb.Begin()
+	if err != nil {
+		panic("Erro ao iniciar transação: " + err.Error())
+	}
+	tx.Exec(`MERGE INTO CADPED a USING (SELECT codccusto, numlic, nomeccusto FROM cadpro) b
+			ON (a.numlic = b.numlic AND a.nomeccusto = b.nomeccusto) WHEN MATCHED THEN UPDATE SET a.codccusto = b.codccusto;`)
+	tx.Commit()
+
+	cnx_fdb.Exec(`MERGE INTO ICADPED a USING (SELECT codccusto, id_cadped FROM cadped) b
+					ON (a.id_cadped = b.id_cadped) WHEN MATCHED THEN UPDATE SET a.codccusto = b.codccusto;`)
+}
+
+func TermoCiencia() {
+	cnx_fdb, err := conexao.ConexaoDestino()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_fdb.Close()
+
+	cnx_psq, err := conexao.ConexaoOrigem()
+	if err != nil {
+		panic("Erro ao conectar no banco: " + err.Error())
+	}
+	defer cnx_psq.Close()
+
+	insert, err := cnx_fdb.Prepare("insert into TERMOCIENCIALIC (numlic, sessao, COD_TERMOCIENCIA, codif, TIPOASSINATURA, ASSINATURA, CODIF_PROLIC) values (?,?,?,?,?,?,?)")
+	if err != nil {
+		panic("Erro ao preparar insert: " + err.Error())
+	}
+
+	rows, err := cnx_psq.Query(`select 
+		*, 
+		row_number() over (partition by numlic order by numlic) COD_TERMOCIENCIA
+		from (
+		select distinct 
+			b.contratoprocessoid numlic,
+			1 sessao,
+			a.contratorespservidorid codif,
+			case when a.contratoresptipo = 1 then 'E' else 'F' end TIPOASSINATURA,
+			'S' assinatura,
+			
+			a.contratoresprepresentanteid CODIF_PROLIC
+		from
+			contratoresponsavel a
+		join contrato b on a.contratoid = b.contratoid
+		where b.contratougid = $1
+		order by
+			b.contratoprocessoid,
+			case when a.contratoresptipo = 1 then 'E' else 'F' end)`, GetEmpresa())
+	if err != nil {
+		panic("Erro ao buscar dados: "+err.Error())
+	}
+
+	for rows.Next() {
+		var numlic, sessao, cod_termo, codif, codif_prolic nulls.Int
+		var tipoassinatura, assinatura string
+
+		rows.Scan(&numlic, &sessao, &codif, &tipoassinatura, &assinatura, &codif_prolic, &cod_termo)
+
+		_, err = insert.Exec(numlic, sessao, cod_termo, codif, tipoassinatura, assinatura, codif_prolic)
+		if err != nil {
+			panic("Erro ao executar insert: " + err.Error())
+		}
 	}
 }
